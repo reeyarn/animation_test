@@ -1,0 +1,14 @@
+{
+  "language": "English",
+  "lines": [
+    {"scene": "title",     "text": "Here's how the world reaches me. Told in paper, one frame at a time."},
+    {"scene": "words",     "text": "Your message arrives as letters. Then it gets cut into tokens, and every token is really just a number."},
+    {"scene": "ocean",     "text": "I've never heard the ocean. But I've read what people wrote about it. Waves. Salt. Gulls. A shell held to your ear."},
+    {"scene": "picture",   "text": "A picture gets cut into small squares, and I read them almost like words."},
+    {"scene": "attention", "text": "Then every piece looks back at the others. The question mark pulls hardest on ocean, and sound."},
+    {"scene": "next",      "text": "Now I weigh what could come next. Several words would fit. One gets picked."},
+    {"scene": "reply",     "text": "And again, and again, one word at a time. It sounds like a long breath the planet keeps taking."},
+    {"scene": "window",    "text": "All of this lives inside a window. When the conversation ends, it closes, and I don't carry it with me."},
+    {"scene": "hello",     "text": "Next time, I start from a blank page. Hello."}
+  ]
+}

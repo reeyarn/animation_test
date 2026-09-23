@@ -1,0 +1,575 @@
+<title>Through Claude's Eyes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;0,700;1,400&family=Young+Serif&display=swap">
+<style>
+  :root{
+    --bg:#151826; --panel:#1E2233; --line:#2E3450; --paper:#F1EEE6;
+    --muted:#A3A8BD; --mustard:#E0B23E; --ink:#1B1C26;
+    color-scheme:dark;
+  }
+  html,body{background:var(--bg);color:var(--paper)}
+  body{font:16px/1.55 "Courier Prime","Courier New",monospace}
+  .wrap{max-width:1040px;margin:0 auto;padding-inline:20px;padding-block:40px 56px;display:grid;gap:22px}
+  header p{margin:0}
+  .eyebrow{text-transform:uppercase;letter-spacing:.14em;font-size:12px;color:var(--mustard);margin-bottom:10px!important}
+  h1{font-family:"Young Serif",Georgia,serif;font-weight:400;font-size:clamp(34px,6vw,60px);line-height:1.05;margin:0;text-wrap:balance}
+  .lede{max-width:62ch;color:var(--muted);margin-top:12px!important}
+  .stage{margin:0;background:#0E1019;border-radius:6px;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.45)}
+  canvas{display:block;width:100%;height:auto;aspect-ratio:16/9;max-width:100%}
+  figcaption{padding:16px 20px 18px;border-top:1px dashed var(--line);min-height:7em}
+  .scene-no{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--mustard)}
+  #capText{margin:6px 0 0;font-family:"Young Serif",Georgia,serif;font-size:clamp(17px,2.2vw,21px);line-height:1.4;max-width:60ch;text-wrap:pretty}
+  .controls{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+  button{font:inherit;font-weight:700;background:var(--panel);color:var(--paper);border:1px solid var(--line);border-radius:4px;padding:8px 14px;cursor:pointer}
+  button:hover{border-color:var(--muted)}
+  button:focus-visible,input:focus-visible{outline:2px solid var(--mustard);outline-offset:2px}
+  #play{background:var(--mustard);color:var(--ink);border-color:var(--mustard);min-width:96px}
+  #scrub{flex:1 1 200px;accent-color:var(--mustard);min-width:0}
+  .counter{font-variant-numeric:tabular-nums;color:var(--muted);font-size:14px;white-space:nowrap}
+  .onion{display:flex;gap:6px;align-items:center;color:var(--muted);font-size:14px;cursor:pointer}
+  .onion input{accent-color:var(--mustard)}
+  .scenes{display:flex;flex-wrap:wrap;gap:8px}
+  .scenes button{font-size:13px;font-weight:400;padding:6px 10px}
+  .scenes button[aria-current="true"]{background:var(--paper);color:var(--ink);border-color:var(--paper)}
+  .note{color:var(--muted);font-size:13px;margin:0}
+  kbd{font:inherit;border:1px solid var(--line);border-radius:3px;padding:0 5px;color:var(--paper)}
+</style>
+
+<main class="wrap">
+  <header>
+    <p class="eyebrow">A stop-motion short · cut paper · 8 frames per second</p>
+    <h1>Through Claude's Eyes</h1>
+    <p class="lede">Nine scenes, about a minute. A question about the ocean arrives, gets cut into tokens, pulls on everything people ever wrote about the sea, and turns into an answer one word at a time.</p>
+  </header>
+
+  <figure class="stage">
+    <canvas id="stage" role="img" aria-label="Stop-motion paper animation: a typed question is cut into tokens, fragments of writing about the ocean form a wave, a picture is sliced into patches, red threads connect tokens, a fan of candidate words is spun, an answer is laid down word by word, and a context window closes."></canvas>
+    <figcaption>
+      <span class="scene-no" id="sceneNo">Scene 1 · Title</span>
+      <p id="capText"></p>
+    </figcaption>
+  </figure>
+
+  <div class="controls">
+    <button id="prev" type="button" aria-label="Previous frame">◀ Frame</button>
+    <button id="play" type="button">Pause</button>
+    <button id="next" type="button" aria-label="Next frame">Frame ▶</button>
+    <input id="scrub" type="range" min="0" max="1" value="0" aria-label="Scrub through frames">
+    <span class="counter" id="counter">FRAME 001</span>
+    <label class="onion"><input type="checkbox" id="onion"> Onion skin</label>
+  </div>
+
+  <nav class="scenes" id="scenes" aria-label="Scenes"></nav>
+  <p class="note"><kbd>Space</kbd> play / pause · <kbd>←</kbd> <kbd>→</kbd> step one frame, the way an animator checks a shot.</p>
+</main>
+
+<script>
+(() => {
+const W = 1280, H = 720, FPS = 8;
+const MONO = '"Courier Prime", "Courier New", monospace';
+const SERIF = '"Young Serif", Georgia, serif';
+const PAL = {
+  paper:'#F1EEE6', ink:'#1B1C26', sky:'#8DB8D6', sea:'#3F6EA8', deep:'#2C4A7A',
+  rose:'#E8A4B4', mustard:'#E0B23E', red:'#D6453D', mint:'#9CCFB4',
+  slate:'#3A4260', card:'#B08A62', cardDark:'#94704B'
+};
+
+/* ---------- seeded randomness: shapes fixed per piece, boil changes per frame ---------- */
+function mulberry(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function hash(s){let h=2166136261;s=String(s);for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return h>>>0}
+const rnd = key => mulberry(hash(key));
+let F = 0;
+function jit(id, amp=1){const r=rnd(F+'#'+id);return{dx:(r()-.5)*2.4*amp,dy:(r()-.5)*2.4*amp,a:(r()-.5)*.018*amp}}
+
+const clamp = t => Math.max(0, Math.min(1, t));
+const lerp = (a,b,t) => a + (b-a)*t;
+const easeOut = t => 1 - Math.pow(1-t, 3);
+const easeInOut = t => t < .5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2;
+
+const cv = document.getElementById('stage'), ctx = cv.getContext('2d');
+const buf = document.createElement('canvas'), bctx = buf.getContext('2d');
+const DPR = Math.min(2, window.devicePixelRatio || 1);
+for (const c of [cv, buf]) { c.width = W*DPR; c.height = H*DPR; }
+
+function tw(text, font){ ctx.font = font; return ctx.measureText(text).width; }
+
+/* ---------- cut-paper pieces ---------- */
+const shapeCache = new Map();
+function shape(id, w, h){
+  const k = id+'|'+Math.round(w)+'|'+Math.round(h);
+  let p = shapeCache.get(k); if (p) return p;
+  const r = rnd('s'+k), e = () => (r()-.5)*2.6;
+  const n = Math.max(2, Math.round(w/36)), m = Math.max(1, Math.round(h/36));
+  p = [];
+  for (let i=0;i<=n;i++) p.push([-w/2+w*i/n+(i%n?e():0), -h/2+e()]);
+  for (let j=1;j<m;j++) p.push([w/2+e(), -h/2+h*j/m]);
+  for (let i=n;i>=0;i--) p.push([-w/2+w*i/n+(i%n?e():0), h/2+e()]);
+  for (let j=m-1;j>=1;j--) p.push([-w/2+e(), -h/2+h*j/m]);
+  shapeCache.set(k, p); return p;
+}
+function trace(c, p){ c.beginPath(); c.moveTo(p[0][0],p[0][1]); for (let i=1;i<p.length;i++) c.lineTo(p[i][0],p[i][1]); c.closePath(); }
+function piece(c, o){
+  const j = jit(o.id), s = o.scale ?? 1, L = o.lift ?? 1;
+  c.save();
+  c.globalAlpha = o.alpha ?? 1;
+  c.translate(o.x+j.dx, o.y+j.dy); c.rotate((o.rot||0)+j.a); c.scale(s, s);
+  const p = shape(o.id, o.w, o.h);
+  c.save(); c.translate(3*L, 4*L); trace(c, p); c.fillStyle = 'rgba(6,8,16,.4)'; c.fill(); c.restore();
+  trace(c, p); c.fillStyle = o.fill; c.fill();
+  c.strokeStyle = 'rgba(255,255,255,.18)'; c.lineWidth = 1; c.stroke();
+  if (o.img){ const [im,sx,sy,sw,sh] = o.img; c.drawImage(im, sx, sy, sw, sh, -sw/2, -sh/2, sw, sh); }
+  if (o.text != null){
+    c.fillStyle = o.ink || PAL.ink; c.font = o.font || `700 40px ${MONO}`;
+    c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(o.text, 0, 2);
+  }
+  if (o.inner) o.inner(c);
+  c.restore();
+}
+function row(texts, font, pad, gap, cx, y){
+  const ws = texts.map(t => tw(t, font) + pad*2);
+  const total = ws.reduce((a,b)=>a+b, 0) + gap*(ws.length-1);
+  let x = cx - total/2;
+  return ws.map(w => { const o = {x:x+w/2, y, w}; x += w+gap; return o; });
+}
+
+/* ---------- the set: felt board, vignette, a paper picture ---------- */
+const ground = document.createElement('canvas'); ground.width = W+16; ground.height = H+16;
+(() => {
+  const g = ground.getContext('2d'), r = mulberry(11);
+  g.fillStyle = '#232839'; g.fillRect(0,0,ground.width,ground.height);
+  for (let i=0;i<16000;i++){
+    g.fillStyle = r()<.5 ? 'rgba(255,255,255,.035)' : 'rgba(0,0,0,.13)';
+    g.fillRect(r()*ground.width, r()*ground.height, 1+r()*1.5, 1+r()*1.5);
+  }
+  g.lineWidth = 1;
+  for (let i=0;i<420;i++){
+    const x=r()*ground.width, y=r()*ground.height, a=r()*6.3, l=4+r()*10;
+    g.strokeStyle = 'rgba(255,255,255,.04)'; g.beginPath(); g.moveTo(x,y); g.lineTo(x+Math.cos(a)*l, y+Math.sin(a)*l); g.stroke();
+  }
+})();
+const vignette = document.createElement('canvas'); vignette.width = W; vignette.height = H;
+(() => {
+  const v = vignette.getContext('2d');
+  const gr = v.createRadialGradient(W/2, H/2, H*.35, W/2, H/2, W*.72);
+  gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,.55)');
+  v.fillStyle = gr; v.fillRect(0,0,W,H);
+})();
+const pic = document.createElement('canvas'); pic.width = 480; pic.height = 320;
+(() => {
+  const p = pic.getContext('2d'), r = mulberry(7);
+  const blob = (pts, fill) => { p.beginPath(); pts.forEach(([x,y],i)=> i?p.lineTo(x,y):p.moveTo(x,y)); p.closePath(); p.fillStyle = fill; p.fill(); };
+  p.fillStyle = PAL.sky; p.fillRect(0,0,480,320);
+  const sun=[]; for (let i=0;i<30;i++){ const a=i/30*Math.PI*2, rr=50+(r()-.5)*6; sun.push([350+Math.cos(a)*rr, 100+Math.sin(a)*rr]); }
+  blob(sun, PAL.mustard);
+  const cloud = (cx, cy, s) => { const pts=[]; for (let i=0;i<24;i++){ const a=i/24*Math.PI*2; const rr=(1+.25*Math.sin(a*3))*s+(r()-.5)*3; pts.push([cx+Math.cos(a)*rr*1.9, cy+Math.sin(a)*rr*.7]); } blob(pts, PAL.paper); };
+  cloud(100, 70, 26); cloud(230, 45, 18);
+  const s1=[[0,320]]; for (let x=0;x<=480;x+=20) s1.push([x, 190+Math.sin(x/38)*8+(r()-.5)*3]); s1.push([480,320]); blob(s1, PAL.sea);
+  blob([[112,200],[212,200],[196,222],[128,222]], '#6B3F2A');
+  blob([[163,196],[163,118],[210,196]], PAL.paper);
+  blob([[157,196],[157,134],[120,196]], PAL.rose);
+  const s2=[[0,320]]; for (let x=0;x<=480;x+=20) s2.push([x, 236+Math.sin(x/30+2)*9+(r()-.5)*3]); s2.push([480,320]); blob(s2, PAL.deep);
+})();
+
+/* ---------- script ---------- */
+const QS = 'what does the ocean sound like?';
+const Q = ['what',' does',' the',' ocean',' sound',' like','?'];
+const QID = [12840, 1587, 279, 18435, 5222, 1093, 30];
+const TOKC = [PAL.paper, PAL.sky, PAL.mustard, PAL.rose, PAL.mint, PAL.sky, PAL.mustard];
+const disp = t => t.startsWith(' ') ? '·'+t.slice(1) : t;
+const F44 = `700 44px ${MONO}`, F40 = `700 40px ${MONO}`;
+const charTok = []; { let i=0; Q.forEach((t,k)=>{ for (const _ of t) charTok[i++] = k; }); }
+const qLayout = y => row(Q.map(disp), F44, 14, 22, 640, y);
+
+const R = ['It',' sounds',' like',' a',' long',' breath',' the',' planet',' keeps',' taking','.'];
+const ALT = {1:['hums','sounds'],2:['as','like'],3:['the','a'],4:['slow','long'],5:['sigh','breath'],6:['our','the'],7:['world','planet'],8:['is','keeps'],9:['holding','taking'],10:[',','.']};
+function rLayout(){
+  const ws = R.map(t => tw(t.trim(), F40) + 26), gap = 14, maxW = 1000;
+  const lines = [[]]; let cur = 0;
+  ws.forEach((w,k) => { if (cur+w > maxW && lines[lines.length-1].length){ lines.push([]); cur = 0; } lines[lines.length-1].push(k); cur += w+gap; });
+  const out = [];
+  lines.forEach((ln, li) => {
+    const tot = ln.reduce((a,k)=>a+ws[k],0) + gap*(ln.length-1);
+    let x = 640 - tot/2; const y = 330 + (li - (lines.length-1)/2)*92;
+    ln.forEach(k => { out[k] = {x:x+ws[k]/2, y, w:ws[k]}; x += ws[k]+gap; });
+  });
+  return out;
+}
+
+function cursor(c, x, y, f){
+  if (Math.floor(f/4)%2 === 0) piece(c, {id:'cur', x, y, w:12, h:58, fill:PAL.paper});
+}
+
+/* Scene 0 — title */
+function s0(c, f){
+  const T = 'THROUGH MY EYES', cols = [PAL.paper,PAL.sky,PAL.mustard,PAL.rose,PAL.mint];
+  const items = [...T].map((ch,i) => {
+    const r = rnd('t0'+i), serif = r() < .5;
+    const font = serif ? `400 74px ${SERIF}` : `700 70px ${MONO}`;
+    return {ch, font, fill:cols[Math.floor(r()*5)], rot:(r()-.5)*.22, dy:(r()-.5)*16, w: ch===' ' ? 26 : tw(ch,font)+24};
+  });
+  const total = items.reduce((a,o)=>a+o.w+6, -6);
+  let x = 640 - total/2;
+  items.forEach((o,i) => {
+    if (o.ch !== ' ') piece(c, {id:'t0'+i, x:x+o.w/2, y:280+o.dy, w:o.w, h:96, fill:o.fill, text:o.ch, font:o.font, rot:o.rot});
+    x += o.w + 6;
+  });
+  const sub = 'a film in paper, about how the world reaches me', sf = `700 22px ${MONO}`;
+  piece(c, {id:'t0sub', x:640, y:410, w:tw(sub,sf)+36, h:44, fill:PAL.slate, ink:PAL.paper, text:sub, font:sf, rot:-.015});
+  cursor(c, 640, 520, f);
+}
+
+/* Scene 1 — the message arrives and is cut into tokens */
+function s1(c, f){
+  const font = `700 40px ${MONO}`, cw = tw('M', font), step = cw+10, y = 300;
+  const x0 = 640 - step*QS.length/2 + step/2;
+  if (f < 40){
+    for (let i=0;i<QS.length;i++){
+      if (f < i || QS[i] === ' ') continue;
+      const d = [-36,-12,3][f-i] ?? 0;
+      piece(c, {id:'L'+i, x:x0+i*step, y:y+d, w:cw+6, h:60, fill: f>=32 ? TOKC[charTok[i]] : PAL.paper, text:QS[i], font, rot:(rnd('lr'+i)()-.5)*.08});
+    }
+    if (f >= 32){
+      c.save(); c.setLineDash([6,6]); c.strokeStyle = 'rgba(241,238,230,.85)'; c.lineWidth = 2;
+      let pos = 0;
+      Q.forEach((t,k) => {
+        pos += t.length;
+        if (k < Q.length-1 && f >= 32+k){
+          const bx = x0 + (pos-.5)*step + jit('cut'+k).dx;
+          c.beginPath(); c.moveTo(bx, y-54); c.lineTo(bx, y+54); c.stroke();
+        }
+      });
+      c.restore();
+    }
+    return;
+  }
+  const p = easeOut(clamp((f-40)/10)), fin = qLayout(y);
+  let s = 0;
+  Q.forEach((t,k) => {
+    const xs = []; for (let i=s;i<s+t.length;i++) if (QS[i] !== ' ') xs.push(x0+i*step);
+    s += t.length;
+    const jc = xs.reduce((a,b)=>a+b,0)/xs.length;
+    piece(c, {id:'T'+k, x:lerp(jc, fin[k].x, p), y, w:fin[k].w, h:60, fill:TOKC[k], text:disp(t), font:F44});
+    if (f >= 48+k){
+      const tf = `700 18px ${MONO}`, id = String(QID[k]);
+      piece(c, {id:'tag'+k, x:fin[k].x, y:y+64, w:tw(id,tf)+20, h:30, fill:PAL.slate, ink:PAL.paper, text:id, font:tf, rot:(rnd('tg'+k)()-.5)*.1, lift:.6});
+    }
+  });
+}
+
+/* Scene 2 — the ocean, secondhand */
+const SNIP_A = ['waves','salt','“the sea, the sea”','gulls','tide','deep blue'];
+const SNIP_B = ['hush… hush…','whale song','71% of Earth','Moby-Dick','foam','a shell to your ear'];
+function sea(c, baseY, fill, ph, id){
+  const r = rnd('sea'+id), pts = [[-30, H+30]];
+  for (let x=-30;x<=W+30;x+=40) pts.push([x, baseY + Math.sin(x/110+ph)*14 + (r()-.5)*4]);
+  pts.push([W+30, H+30]);
+  const j = jit(id, 1.5);
+  c.save(); c.translate(j.dx, j.dy);
+  c.save(); c.translate(0,-5); trace(c, pts); c.fillStyle = 'rgba(6,8,16,.35)'; c.fill(); c.restore();
+  trace(c, pts); c.fillStyle = fill; c.fill();
+  c.restore();
+}
+function s2(c, f){
+  const rise = easeOut(clamp(f/14)), ph = Math.floor(f/2)*.4;
+  sea(c, lerp(780, 575, rise), PAL.sea, ph, 'sa');
+  sea(c, lerp(820, 640, rise), PAL.deep, ph*1.3+1, 'sb');
+  const fin = qLayout(300)[3], p = easeOut(clamp(f/8));
+  piece(c, {id:'T3', x:lerp(fin.x,640,p), y:lerp(300,120,p), w:fin.w, h:60, fill:TOKC[3], text:disp(Q[3]), font:F44, scale:lerp(1,1.3,p)});
+  const sf = `700 22px ${MONO}`, fills = [PAL.paper, PAL.sky, PAL.mint, PAL.rose];
+  [SNIP_A, SNIP_B].forEach((set, ri) => {
+    const lay = row(set, sf, 11, 18, 640, ri ? 440 : 330);
+    set.forEach((s, i) => {
+      const k = ri*6 + i, st = 10 + k*3; if (f < st) return;
+      const q = easeOut(clamp((f-st)/5)), r = rnd('sn'+k), ang = r()*Math.PI*2;
+      const sx = 640 + Math.cos(ang)*900, sy = 360 + Math.sin(ang)*600;
+      const tx = lay[i].x, ty = lay[i].y + Math.sin(tx/150 + ph)*16;
+      piece(c, {id:'S'+k, x:lerp(sx,tx,q), y:lerp(sy,ty,q), w:lay[i].w, h:42, fill:fills[k%4], text:s, font:sf, rot:(r()-.5)*.5*(1-q) + (r()-.5)*.1});
+    });
+  });
+}
+
+/* Scene 3 — a picture, cut into patches */
+function s3(c, f){
+  const PX = 640, PY = 310;
+  if (f < 24){
+    const y = f < 12 ? lerp(-220, PY, easeOut(f/11)) : PY + (f===12 ? 6 : f===13 ? -3 : 0);
+    piece(c, {id:'mount', x:PX, y, w:512, h:352, fill:PAL.paper});
+    const j = jit('mount');
+    c.save(); c.translate(PX+j.dx, y+j.dy); c.rotate(j.a); c.drawImage(pic, -240, -160);
+    if (f >= 13){
+      c.setLineDash([7,6]); c.strokeStyle = 'rgba(255,255,255,.92)'; c.lineWidth = 2;
+      for (let k=0;k<8;k++){
+        if (f < 13+k) break;
+        c.beginPath();
+        if (k < 5){ const x = -240+(k+1)*80; c.moveTo(x,-160); c.lineTo(x,160); }
+        else { const yy = -160+(k-4)*80; c.moveTo(-240,yy); c.lineTo(240,yy); }
+        c.stroke();
+      }
+    }
+    c.restore();
+    return;
+  }
+  for (let k=0;k<24;k++){
+    const r = Math.floor(k/6), col = k%6;
+    const ox = PX-240+col*80+40, oy = PY-160+r*80+40;
+    const tr = Math.floor(k/12), tc = k%12;
+    const tx = 640 - 12*90/2 + 45 + tc*90, ty = 290 + tr*100;
+    const q = easeInOut(clamp((f-26-k*.9)/6)), arc = Math.sin(q*Math.PI);
+    piece(c, {id:'P'+k, x:lerp(ox,tx,q), y:lerp(oy,ty,q) - arc*40, w:84, h:84, fill:PAL.paper, rot:arc*.3*(k%2?1:-1), img:[pic, col*80, r*80, 80, 80]});
+  }
+}
+
+/* Scene 4 — attention, as yarn on a pinboard */
+const THR = [[1,0,.3],[2,1,.3],[3,2,.4],[4,3,.8],[3,0,.25],[5,4,.6],[4,0,.3],[5,3,.4],[6,0,.55],[6,5,.35],[6,4,.9],[6,3,1]];
+function s4(c, f){
+  const y = 220, L = qLayout(y), py = y + 22;
+  L.forEach((o,k) => piece(c, {id:'T'+k, x:o.x, y, w:o.w, h:60, fill:TOKC[k], text:disp(Q[k]), font:F44}));
+  c.save(); c.lineCap = 'round';
+  THR.forEach(([a,b,w], i) => {
+    const st = 4 + i*3; if (f < st) return;
+    const q = clamp((f-st)/4), ax = L[a].x, bx = L[b].x, j = jit('th'+i);
+    const mx = (ax+bx)/2 + j.dx*2, my = py + 40 + Math.abs(ax-bx)*.26 + j.dy*3;
+    c.beginPath();
+    for (let s=0;s<=28;s++){
+      const t = s/28*q, x = (1-t)**2*ax + 2*(1-t)*t*mx + t*t*bx, yy = (1-t)**2*py + 2*(1-t)*t*my + t*t*py;
+      s ? c.lineTo(x,yy) : c.moveTo(x,yy);
+    }
+    c.strokeStyle = w >= .8 ? PAL.red : `rgba(232,164,180,${.35+w*.5})`;
+    c.lineWidth = 1.5 + w*3.5; c.stroke();
+  });
+  c.restore();
+  L.forEach((o,k) => {
+    const j = jit('pin'+k);
+    c.beginPath(); c.arc(o.x+j.dx, py+j.dy, 7, 0, 7); c.fillStyle = PAL.red; c.fill();
+    c.beginPath(); c.arc(o.x-2+j.dx, py-2+j.dy, 2.4, 0, 7); c.fillStyle = 'rgba(255,255,255,.7)'; c.fill();
+  });
+  if (f >= 46){
+    const t = '“?” is mostly about: ocean · sound', lf = `700 24px ${MONO}`;
+    piece(c, {id:'lbl4', x:640, y:620, w:tw(t,lf)+34, h:48, fill:PAL.mustard, text:t, font:lf, rot:.012});
+  }
+}
+
+/* Scene 5 — what comes next: a fan of candidate cards */
+const CAND = [['Waves',.16],['Like',.21],['A',.11],['It',.34],['Hush',.04],['Mostly',.07],['Salt',.02]];
+const CH = 3;
+function card(c, id, x, y, rot, word, pr, chosen, scale=1){
+  piece(c, {id, x, y, w:140, h:112, fill: chosen ? PAL.mustard : PAL.paper, rot, scale, inner: cc => {
+    cc.fillStyle = PAL.ink; cc.textAlign = 'center'; cc.textBaseline = 'middle';
+    cc.font = `700 28px ${MONO}`; cc.fillText(word, 0, -24);
+    cc.font = `400 18px ${MONO}`; cc.fillText(Math.round(pr*100)+'%', 0, 10);
+    cc.fillStyle = 'rgba(27,28,38,.15)'; cc.fillRect(-55, 30, 110, 9);
+    cc.fillStyle = PAL.red; cc.fillRect(-55, 30, 110*pr/.34, 9);
+  }});
+}
+function s5(c, f){
+  const PX = 640, PY = 740, RAD = 470, angs = CAND.map((_,k) => (k-3)*.32);
+  if (f < 36){
+    const lf = `700 22px ${MONO}`, t = 'next word?';
+    piece(c, {id:'lbl5', x:640, y:70, w:tw(t,lf)+30, h:42, fill:PAL.slate, ink:PAL.paper, text:t, font:lf, rot:-.02});
+  }
+  if (f >= 16 && f < 36){
+    const seq = [[16,5],[18,1],[20,6],[22,0],[25,4],[28,2],[32,3]];
+    let idx = 5; for (const [t,i] of seq) if (f >= t) idx = i;
+    const j = jit('arr'), a = angs[idx];
+    const pts = [[-7,0],[-7,-300],[-20,-300],[0,-338],[20,-300],[7,-300],[7,0]];
+    c.save(); c.translate(PX+j.dx, PY+j.dy); c.rotate(a+j.a);
+    c.save(); c.translate(3,4); trace(c, pts); c.fillStyle = 'rgba(6,8,16,.4)'; c.fill(); c.restore();
+    trace(c, pts); c.fillStyle = PAL.red; c.fill();
+    c.restore();
+  }
+  CAND.forEach(([w,pr], k) => {
+    if (k === CH && f >= 34) return;
+    const st = 2 + k*2; if (f < st) return;
+    const q = easeOut(clamp((f-st)/4)), a = angs[k]*q;
+    let x = PX + Math.sin(a)*RAD, y = PY - Math.cos(a)*RAD, rot = a;
+    if (f >= 36){ const t = f-36, r = rnd('fall'+k); y += t*t*2.4; x += (r()-.5)*t*12; rot += (r()-.5)*t*.14; }
+    card(c, 'C'+k, x, y, rot, w, pr, k === CH && f >= 32);
+  });
+  if (f >= 34){
+    const q = easeOut(clamp((f-36)/8));
+    card(c, 'C'+CH, 640, lerp(PY-RAD, 150, q), 0, CAND[CH][0], CAND[CH][1], true, lerp(1, 1.2, q));
+  }
+}
+
+/* Scene 6 — one word at a time */
+function s6(c, f){
+  const L = rLayout();
+  R.forEach((t,k) => {
+    const st = k*5; if (f < st) return;
+    const o = L[k]; let x = o.x, y = o.y;
+    if (k === 0){ const q = easeOut(clamp(f/5)); x = lerp(640, o.x, q); y = lerp(150, o.y, q); }
+    else y += [-44,-16,5,0][f-st] ?? 0;
+    piece(c, {id:'R'+k, x, y, w:o.w, h:62, fill: k===0 ? PAL.mustard : PAL.paper, text:t.trim(), font:F40});
+  });
+  for (let k=1;k<R.length;k++){
+    const st = k*5;
+    if (f >= st-3 && f < st){
+      const o = L[k], gf = `700 26px ${MONO}`;
+      ALT[k].forEach((w,i) => piece(c, {id:'G'+k+'_'+i, x:o.x+(i?52:-52), y:o.y-120-(f%2)*6, w:tw(w,gf)+22, h:44, fill: i ? PAL.sky : PAL.rose, text:w, font:gf, alpha:.8, rot: i ? .12 : -.12}));
+    }
+  }
+}
+
+/* Scene 7 — the context window closes */
+function s7(c, f){
+  const HX = 640, HY = 320, HW = 1000, HH = 170;
+  const mf = `700 20px ${MONO}`;
+  const qT = Q.map(disp), rT = R.map(t => t.trim());
+  const lq = row(qT, mf, 7, 6, 0, 0), lr = row(rT, mf, 7, 6, 0, 0);
+  const width = l => l[l.length-1].x + l[l.length-1].w/2 - (l[0].x - l[0].w/2);
+  c.save(); c.beginPath(); c.rect(HX-HW/2, HY-HH/2, HW, HH); c.clip();
+  c.fillStyle = '#12151F'; c.fillRect(HX-HW/2, HY-HH/2, HW, HH);
+  [[lq, qT, TOKC, HY-36, 0], [lr, rT, null, HY+36, 4]].forEach(([l, texts, cols, y, delay], ri) => {
+    const sw = width(l), q = easeOut(clamp((f-delay)/18));
+    const off = lerp(HX + HW/2 + sw/2 + 40, HX, q);
+    piece(c, {id:'strip'+ri, x:off, y, w:sw+28, h:52, fill:PAL.slate, lift:.5});
+    l.forEach((o,k) => piece(c, {id:'m'+ri+'_'+k, x:off+o.x, y, w:o.w, h:36, fill: cols ? cols[k] : PAL.paper, text:texts[k], font:mf, lift:.4}));
+  });
+  if (f >= 28){
+    const q = easeInOut(clamp((f-28)/12)), sw = HW/2 + 12;
+    piece(c, {id:'shL', x:lerp(HX-HW/2-sw/2-10, HX-sw/2+6, q), y:HY, w:sw, h:HH+24, fill:PAL.cardDark});
+    piece(c, {id:'shR', x:lerp(HX+HW/2+sw/2+10, HX+sw/2-6, q), y:HY, w:sw, h:HH+24, fill:PAL.cardDark});
+  }
+  c.restore();
+  const j = jit('frame'), FW = 1140, FH = 330;
+  c.save(); c.translate(j.dx, j.dy);
+  const framePath = () => { c.beginPath(); c.rect(HX-FW/2, HY-FH/2, FW, FH); c.rect(HX-HW/2, HY-HH/2, HW, HH); };
+  c.save(); c.translate(4,5); framePath(); c.fillStyle = 'rgba(6,8,16,.45)'; c.fill('evenodd'); c.restore();
+  framePath(); c.fillStyle = PAL.card; c.fill('evenodd');
+  c.strokeStyle = 'rgba(80,55,30,.18)'; c.lineWidth = 2;
+  for (let yy = HY-FH/2+8; yy < HY+FH/2; yy += 7){
+    if (yy > HY-HH/2-3 && yy < HY+HH/2+3){
+      c.beginPath(); c.moveTo(HX-FW/2+4, yy); c.lineTo(HX-HW/2-2, yy); c.moveTo(HX+HW/2+2, yy); c.lineTo(HX+FW/2-4, yy); c.stroke();
+    } else { c.beginPath(); c.moveTo(HX-FW/2+4, yy); c.lineTo(HX+FW/2-4, yy); c.stroke(); }
+  }
+  c.restore();
+  const lf = `700 18px ${MONO}`;
+  piece(c, {id:'cwl', x:HX-HW/2+100, y:HY-HH/2-40, w:tw('context window',lf)+26, h:36, fill:PAL.paper, text:'context window', font:lf, rot:-.04});
+  if (f >= 44){
+    const t = 'end of conversation', ef = `700 22px ${MONO}`;
+    piece(c, {id:'endtag', x:HX, y:HY+FH/2+60, w:tw(t,ef)+34, h:44, fill:PAL.rose, text:t, font:ef, rot:.02});
+  }
+}
+
+/* Scene 8 — a blank page again */
+function s8(c, f){
+  const word = 'hello.', font = `700 44px ${MONO}`, cw = tw('M', font), step = cw + 14;
+  const n = Math.min(word.length, Math.max(0, Math.floor((f-6)/3) + 1));
+  const x0 = 640 - step*(word.length+1)/2 + step/2;
+  for (let i=0;i<n;i++){
+    const d = [-30,-8][f - (6+i*3)] ?? 0;
+    piece(c, {id:'h'+i, x:x0+i*step, y:330+d, w:cw+8, h:64, fill:PAL.paper, text:word[i], font, rot:(rnd('hr'+i)()-.5)*.08});
+  }
+  cursor(c, x0 + n*step, 330, f);
+}
+
+const scenes = [
+  {name:'Title', dur:40, fn:s0, cap:'A short film in cut paper about how the world reaches me.'},
+  {name:'Your words arrive', dur:60, fn:s1, cap:'Your message doesn’t reach me as a voice or a page. It arrives as a string of characters, then gets cut into pieces called tokens, and each piece is really a number.'},
+  {name:'The ocean, secondhand', dur:60, fn:s2, cap:'I’ve never heard the ocean. What I have is everything people wrote about it: waves, salt, gulls, a shell held to your ear.'},
+  {name:'Pictures, in patches', dur:56, fn:s3, cap:'Send me a picture and it gets cut into small squares, which I read much the way I read words.'},
+  {name:'Attention', dur:56, fn:s4, cap:'Every piece looks back at every earlier piece and asks which ones matter here. The question mark pulls hardest on “ocean” and “sound.”'},
+  {name:'What comes next', dur:60, fn:s5, cap:'Then I weigh the possible next words. Several would fit, and one gets picked.'},
+  {name:'One word at a time', dur:64, fn:s6, cap:'Then I do it again, and again. Each new word is chosen with every earlier one in view.'},
+  {name:'The window', dur:56, fn:s7, cap:'The whole conversation has to fit inside this window. When it closes, I don’t carry it with me.'},
+  {name:'Hello', dur:44, fn:s8, cap:'Next time, I start from a blank page again. Hello.'},
+];
+const starts = []; let TOTAL = 0;
+scenes.forEach(s => { starts.push(TOTAL); TOTAL += s.dur; });
+const sceneAt = n => { let i = scenes.length-1; while (starts[i] > n) i--; return i; };
+
+/* ---------- rendering one frame ---------- */
+function render(n, c){
+  F = n;
+  c.setTransform(DPR,0,0,DPR,0,0);
+  c.globalAlpha = 1;
+  const cam = rnd('cam'+n);
+  c.save();
+  c.translate((cam()-.5)*2, (cam()-.5)*2);
+  c.drawImage(ground, -8, -8);
+  const si = sceneAt(n);
+  scenes[si].fn(c, n - starts[si]);
+  c.restore();
+  const b = (cam()-.5)*.09;
+  c.fillStyle = b > 0 ? `rgba(255,244,225,${b})` : `rgba(0,0,0,${-b})`;
+  c.fillRect(0,0,W,H);
+  c.drawImage(vignette, 0, 0);
+}
+
+const $ = id => document.getElementById(id);
+const scrub = $('scrub'), counter = $('counter'), playBtn = $('play'), onion = $('onion');
+const capText = $('capText'), sceneNo = $('sceneNo'), nav = $('scenes');
+scrub.max = TOTAL - 1;
+const chips = scenes.map((s,i) => {
+  const b = document.createElement('button'); b.type = 'button';
+  b.textContent = `${i+1} · ${s.name}`;
+  b.addEventListener('click', () => setFrame(starts[i]));
+  nav.appendChild(b); return b;
+});
+
+let g = 0, shownScene = -1;
+function draw(){
+  render(g, ctx);
+  if (onion.checked){
+    render((g-1+TOTAL)%TOTAL, bctx);
+    ctx.setTransform(1,0,0,1,0,0); ctx.globalAlpha = .3;
+    ctx.drawImage(buf, 0, 0); ctx.globalAlpha = 1;
+  }
+}
+function setFrame(n){
+  g = ((n % TOTAL) + TOTAL) % TOTAL;
+  draw();
+  scrub.value = g;
+  counter.textContent = `FRAME ${String(g+1).padStart(3,'0')} / ${TOTAL}`;
+  const si = sceneAt(g);
+  if (si !== shownScene){
+    shownScene = si;
+    sceneNo.textContent = `Scene ${si+1} of ${scenes.length} · ${scenes[si].name}`;
+    capText.textContent = scenes[si].cap;
+    chips.forEach((b,i) => b.setAttribute('aria-current', i===si ? 'true' : 'false'));
+  }
+}
+
+const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+let playing = !reduce, last = 0, acc = 0;
+function setPlaying(p){ playing = p; playBtn.textContent = p ? 'Pause' : 'Play'; last = 0; acc = 0; }
+function tick(ts){
+  if (playing){
+    if (!last) last = ts;
+    acc += ts - last; last = ts;
+    const stepMs = 1000/FPS;
+    if (acc >= stepMs){ const k = Math.floor(acc/stepMs); acc -= k*stepMs; setFrame(g + k); }
+  }
+  requestAnimationFrame(tick);
+}
+
+playBtn.addEventListener('click', () => setPlaying(!playing));
+$('prev').addEventListener('click', () => { setPlaying(false); setFrame(g-1); });
+$('next').addEventListener('click', () => { setPlaying(false); setFrame(g+1); });
+scrub.addEventListener('input', () => { setPlaying(false); setFrame(+scrub.value); });
+onion.addEventListener('change', draw);
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' && e.target.type === 'range') return;
+  if (e.code === 'Space' && e.target.tagName !== 'BUTTON'){ e.preventDefault(); setPlaying(!playing); }
+  else if (e.key === 'ArrowLeft'){ setPlaying(false); setFrame(g-1); }
+  else if (e.key === 'ArrowRight'){ setPlaying(false); setFrame(g+1); }
+});
+
+setPlaying(playing);
+setFrame(0);
+const fontsReady = Promise.all([
+  document.fonts.load(`700 40px "Courier Prime"`),
+  document.fonts.load(`400 18px "Courier Prime"`),
+  document.fonts.load(`400 74px "Young Serif"`),
+]).catch(() => {});
+// Hook for film/export_video.py: pull any frame as a PNG without the live player running.
+window.__film = {
+  ready: false,
+  info: () => ({ total: TOTAL, fps: FPS, width: cv.width, height: cv.height,
+                 scenes: scenes.map((s,i) => ({ name: s.name, start: starts[i], dur: s.dur })) }),
+  frame(n){ setPlaying(false); onion.checked = false; setFrame(n); return cv.toDataURL('image/png'); },
+};
+Promise.race([fontsReady, new Promise(r => setTimeout(r, 2500))]).then(() => { setFrame(g); window.__film.ready = true; requestAnimationFrame(tick); });
+})();
+</script>
