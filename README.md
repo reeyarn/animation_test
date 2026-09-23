@@ -19,6 +19,8 @@ This repo shows exactly how it was made: the prompts, the code Claude wrote, and
 The full list of prompts is in
 [`.journal/prompt/202609/prompt-20260923-1625-philipp-stopmotion-film.md`](.journal/prompt/202609/prompt-20260923-1625-philipp-stopmotion-film.md).
 A session summary is in [`.journal/journal/202609/`](.journal/journal/202609/journal-20260923-1625-philipp-stopmotion-film.md).
+The prompts together with Claude's replies, in order, are in
+[`.journal/sessions/202609/prompt_answer_20260905_1632.md`](.journal/sessions/202609/prompt_answer_20260905_1632.md).
 In short:
 
 1. **"Create a stop-motion animation of what it's like to see the world through Claude's eyes."** Claude wrote a single HTML file that draws the whole film on a `<canvas>`. Every frame is computed from its frame number, and seeded random jitter gives the hand-animated shimmer (see below).
