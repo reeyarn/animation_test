@@ -1,0 +1,56 @@
+{
+  "language": "English",
+  "note": "text = subtitle; say = what the TTS model reads (phonetic where needed). tail = seconds held after the last line.",
+  "scenes": [
+    {"id": "title", "lead": 1.4, "tail": 1.0, "lines": [
+      {"text": "Every year, a public firm tells investors how it is doing, through two channels in one annual report.",
+       "say":  "Every year, a public firm tells investors how it is doing, through two channels, in one annual report."}
+    ]},
+    {"id": "channels", "lead": 0.6, "tail": 1.0, "lines": [
+      {"text": "Item 8, the financial statements, is strict. GAAP has a rule for almost every line, and auditors check it.",
+       "say":  "Item eight, the financial statements, is strict. Gap has a rule for almost every line, and auditors check it."},
+      {"text": "Item 7, the MD&A, is management's own narrative. It is far more flexible.",
+       "say":  "Item seven, the M D and A, is management's own story. It is far more flexible."}
+    ]},
+    {"id": "fits", "lead": 0.5, "tail": 1.2, "lines": [
+      {"text": "For a factory-style firm, the statements work well: earnings and book value explain the stock price.",
+       "say":  "For a factory-style firm, the statements work well. Earnings and book value explain the stock price."}
+    ]},
+    {"id": "stuck", "lead": 0.6, "tail": 0.8, "lines": [
+      {"text": "But value built on ideas, software and brands doesn't fit GAAP's boxes. Price drifts away from the numbers.",
+       "say":  "But value built on ideas, software and brands doesn't fit gap's boxes. The price drifts away from the numbers."},
+      {"text": "The authors call this financial statement inadequacy: one minus that R-squared.",
+       "say":  "The authors call this, financial statement inadequacy. One, minus that R squared."}
+    ]},
+    {"id": "question", "lead": 0.4, "tail": 0.9, "lines": [
+      {"text": "So what does the manager do? Just comply and move on, or turn to the flexible channel?",
+       "say":  "So what does the manager do? Just comply, and move on? Or turn to the flexible channel?"}
+    ]},
+    {"id": "mdna", "lead": 0.5, "tail": 1.2, "lines": [
+      {"text": "They turn. Firms with weaker statements discuss non-GAAP measures more, tailored to their own situation.",
+       "say":  "They turn. Firms with weaker statements discuss non-gap measures more, tailored to their own situation."},
+      {"text": "And they write more forward-looking statements, so investors can see where the firm is heading.",
+       "say":  "And they write more forward-looking statements, so investors can see where the firm is heading."}
+    ]},
+    {"id": "numbers", "lead": 0.5, "tail": 1.6, "lines": [
+      {"text": "From the most to the least adequate firms, non-GAAP discussion rises by 19 percent,",
+       "say":  "From the most, to the least adequate firms, non-gap discussion rises by nineteen percent,"},
+      {"text": "and forward-looking sentences rise by about 5 percent.",
+       "say":  "and forward-looking sentences rise by about five percent."}
+    ]},
+    {"id": "methods", "lead": 0.5, "tail": 1.0, "lines": [
+      {"text": "The MD&As are read by machine. Keywords catch non-GAAP talk; a deep-learning network spots forward-looking sentences.",
+       "say":  "The M D and A's are read by machine. Keywords catch non-gap talk. A deep-learning network spots forward-looking sentences."},
+      {"text": "TopicTiling cuts each document into topics. The extra disclosure appears where traditional reporting is weakest, such as intangibles.",
+       "say":  "Topic tiling cuts each document into topics. The extra disclosure appears where traditional reporting is weakest, such as intangibles."}
+    ]},
+    {"id": "mosaic", "lead": 0.5, "tail": 1.4, "lines": [
+      {"text": "So managers use their channels together, like a mosaic. When one is constrained, the other carries more.",
+       "say":  "So managers use their channels together, like a mosaic. When one is constrained, the other carries more."}
+    ]},
+    {"id": "end", "lead": 0.6, "tail": 3.2, "lines": [
+      {"text": "Brown, Hinson and Tucker, Contemporary Accounting Research, 2024.",
+       "say":  "Brown, Hinson, and Tucker. Contemporary Accounting Research. Twenty twenty-four."}
+    ]}
+  ]
+}

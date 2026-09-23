@@ -1,0 +1,715 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Two Channels · financial statements and the MD&amp;A</title>
+<style>body{margin:0;background:#1d1b19;color:#ddd;font:13px system-ui;display:grid;place-items:center;min-height:100vh}canvas{max-width:100vw;max-height:90vh}.bar{display:flex;gap:6px;align-items:center;padding:6px}</style>
+<canvas id="c"></canvas>
+<script src="core.js"></script>
+<script src="studio.js"></script>
+<script src="cels.js"></script>
+<script src="fonts/caveat.js"></script>
+<script src="timing.js"></script>
+<script>
+'use strict';
+/* BRIEF
+Subject: Brown, Hinson & Tucker (2024, CAR). Firms report through two channels: the
+  rigid, GAAP-ruled, audited financial statements (Item 8) and the flexible MD&A
+  narrative (Item 7). When the statements are inadequate (value that GAAP's boxes
+  cannot hold), managers carry more through the MD&A: non-GAAP measures and
+  forward-looking statements. The investor's picture ends as a mosaic from both.
+Duration ~112 s, set by the narration (timing.js). 16:9, 1920x1080, 24 fps.
+Look: ink contour on warm paper with flat, slightly misregistered print fills.
+  Blue = financial statements channel; terracotta = MD&A channel; ochre = intangibles.
+Cast: the manager (suit, tie; faces right) and the investor (ochre turtleneck, round
+  glasses, magnifier; faces left). Whole-pose drawings rebuilt per exposed pose from
+  authored landmarks; inbetweens only between compatible poses; on twos; holds are still.
+Hardest action: the manager pushes an "ideas" blob into the square GAAP duct: it jams,
+  he strains (two pushes), a few blue pieces squeeze through, he steps back and looks.
+  Contacts: back foot planted through the push; front foot lifts on the breakdown.
+Camera: locked or slow eased moves only. No shake, no idle boil, no flicker.
+Beat sheet (see TIMING): title → channels → fits → stuck → question → mdna → numbers
+  → methods → mosaic → end. Sound: soft procedural cues; narration mixed afterwards.
+Sources: Caveat font (SIL OFL, fonts/OFL.txt). Everything else drawn in code.
+*/
+const INK='#2a2521', PAPER='#f2ebdc', BLUE='#2f6190', BLUE_L='#c9d8e6', RED='#c25a3c', RED_L='#f0d2c4',
+  OCHRE='#d9a23e', OCHRE_L='#f1dcae', SLATE='#5f6c79', TROUSER='#3e4651', SKIN='#f0d3b8', GREY='#8b8276', CREAM='#fbf6ea';
+const FONT = new FontFace('Caveat', `url(${CAVEAT_URL})`, {weight: '400 700'});
+document.fonts.add(FONT); _photoLoads.push(FONT.load());
+const SC = Object.fromEntries(TIMING.map(s => [s.id, s]));
+const LN = (id, k) => SC[id].lines[k];                       // {start, end, text}
+const at = (id, k, f) => { const l = LN(id, k); return l.start + (l.end - l.start) * f; };  // time at fraction f of a spoken line
+const snap2 = t => Math.floor(t * 12 + 1e-6) / 12;          // character exposure: twos
+
+// ---------------------------------------------------------------- small vector kit
+const vadd = (a, b) => [a[0] + b[0], a[1] + b[1]], vsub = (a, b) => [a[0] - b[0], a[1] - b[1]], vmul = (a, k) => [a[0] * k, a[1] * k];
+const vunit = a => { const l = Math.hypot(a[0], a[1]) || 1; return [a[0] / l, a[1] / l]; }, vperp = a => [-a[1], a[0]];
+const vlerp = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t)];
+const vrot = (p, r) => [p[0] * Math.cos(r) - p[1] * Math.sin(r), p[0] * Math.sin(r) + p[1] * Math.cos(r)];
+function lerpDeep(a, b, t) { if (typeof a === 'number') return lerp(a, b, t); if (Array.isArray(a)) return a.map((v, i) => lerpDeep(v, b[i], t)); if (a && typeof a === 'object') { const o = {}; for (const k in a) o[k] = k in b ? lerpDeep(a[k], b[k], t) : a[k]; return o; } return t < .5 ? a : b; }
+
+// ---------------------------------------------------------------- lettering and lines
+function write(c, text, x, y, o = {}) {
+  const {size = 44, color = INK, p = 1, align = 'left', weight = 600, rot = 0, alpha: al = 1} = o;
+  const n = Math.round(text.length * clamp(p, 0, 1)); if (!n) return;
+  c.save(); c.translate(x, y); c.rotate(rot); c.font = `${weight} ${size}px Caveat, ${HAND_FONT}`; c.textBaseline = 'alphabetic';
+  const full = c.measureText(text).width, x0 = align === 'center' ? -full / 2 : align === 'right' ? -full : 0;
+  c.textAlign = 'left'; c.fillStyle = color; c.globalAlpha *= al; c.fillText(text.slice(0, n), x0, 0); c.restore();
+  return full;
+}
+const writeP = (tau, t0, text, cps = 26) => clamp((tau - t0) * cps / Math.max(1, text.length), 0, 1);   // write-on progress
+function inkLine(c, pts, {w = 2.4, color = INK, seed = 1, p = 1, amp = 1.2, close = false, alpha: al = 1} = {}) {
+  if (p <= 0) return; c.save(); c.strokeStyle = color; c.lineWidth = w; c.lineCap = 'round'; c.lineJoin = 'round'; c.globalAlpha *= al;
+  if (p < 1) { const L = pathLength(smoothPts(pts, close), close) * 1.04 + 8; c.setLineDash([L * p, L * 2]); }
+  wob(c, pts, amp, seed, close, {pressure: .4}); c.restore();
+}
+function printFill(c, path, color, {off = [-3, 2], al = 1} = {}) { c.save(); c.translate(off[0], off[1]); c.globalAlpha *= al; c.fillStyle = color; c.fill(path); c.restore(); }
+
+// ---------------------------------------------------------------- characters
+// A pose is a set of authored landmarks in local space (feet at 0,0; +x = facing).
+// buildFigure turns a pose into a whole drawing: continuous contours, fills, face.
+const MAN = {
+  rest:    {hip:[0,-160], neck:[3,-300], head:[8,-345], tilt:0, eye:1, look:[1,0], brow:0, mouth:.25, open:0, hunch:0,
+            armN:[[16,-224],[20,-168]], armF:[[-16,-226],[-18,-170]], legN:[[8,-80],[12,0]], legF:[[-8,-80],[-12,0]], fingers:0},
+  hold:    {hip:[0,-160], neck:[4,-300], head:[10,-345], tilt:.04, eye:1, look:[1,.2], brow:.1, mouth:.3, open:0, hunch:0,
+            armN:[[26,-232],[68,-244]], armF:[[18,-238],[60,-258]], legN:[[8,-80],[12,0]], legF:[[-8,-80],[-12,0]], fingers:0},
+  step:    {hip:[16,-164], neck:[34,-302], head:[46,-345], tilt:.08, eye:1, look:[1,.1], brow:.2, mouth:.1, open:0, hunch:.2,
+            armN:[[58,-240],[104,-252]], armF:[[50,-246],[96,-266]], legN:[[52,-104],[56,-30]], legF:[[-2,-80],[-12,0]], fingers:0},
+  push1:   {hip:[30,-150], neck:[80,-282], head:[102,-322], tilt:.2, eye:1, look:[1,.1], brow:-.3, mouth:-.1, open:.1, hunch:.3,
+            armN:[[122,-250],[166,-262]], armF:[[116,-258],[160,-274]], legN:[[84,-80],[95,0]], legF:[[6,-76],[-12,0]], fingers:0},
+  push2:   {hip:[42,-140], neck:[96,-262], head:[122,-292], tilt:.38, eye:0, look:[1,0], brow:-1, mouth:-.5, open:.35, hunch:.6,
+            armN:[[134,-236],[176,-258]], armF:[[128,-244],[170,-270]], legN:[[100,-86],[100,0]], legF:[[14,-70],[-12,0]], fingers:0},
+  recoil:  {hip:[8,-160], neck:[2,-300], head:[2,-345], tilt:-.12, eye:1.2, look:[.4,-.4], brow:.9, mouth:-.35, open:.25, hunch:0,
+            armN:[[30,-226],[58,-196]], armF:[[-10,-228],[20,-196]], legN:[[20,-80],[30,0]], legF:[[-6,-80],[-12,0]], fingers:1},
+  look:    {hip:[2,-160], neck:[6,-300], head:[16,-342], tilt:.22, eye:1, look:[1,1], brow:.6, mouth:-.15, open:0, hunch:.1,
+            armN:[[20,-224],[26,-168]], armF:[[-14,-226],[-14,-170]], legN:[[20,-80],[30,0]], legF:[[-6,-80],[-12,0]], fingers:0},
+  think:   {hip:[2,-160], neck:[4,-300], head:[10,-346], tilt:-.1, eye:1, look:[.7,-1], brow:.5, mouth:-.1, open:0, hunch:0,
+            armN:[[44,-240],[40,-302]], armF:[[20,-236],[52,-240]], legN:[[20,-80],[30,0]], legF:[[-6,-80],[-12,0]], fingers:0},
+  write1:  {hip:[4,-160], neck:[22,-298], head:[40,-336], tilt:.32, eye:1, look:[1,1.2], brow:.2, mouth:.3, open:0, hunch:.3,
+            armN:[[58,-206],[104,-186]], armF:[[40,-214],[80,-184]], legN:[[20,-80],[30,0]], legF:[[-6,-80],[-12,0]], fingers:0},
+  write2:  {hip:[6,-160], neck:[25,-298], head:[44,-335], tilt:.3, eye:1, look:[1.2,1.1], brow:.25, mouth:.45, open:0, hunch:.3,
+            armN:[[70,-204],[124,-186]], armF:[[40,-214],[80,-184]], legN:[[20,-80],[30,0]], legF:[[-6,-80],[-12,0]], fingers:0},
+  pleased: {hip:[0,-160], neck:[4,-302], head:[12,-348], tilt:-.06, eye:1, look:[1,-.1], brow:.35, mouth:.9, open:.2, hunch:0,
+            armN:[[22,-222],[40,-176]], armF:[[-14,-226],[-18,-170]], legN:[[14,-80],[20,0]], legF:[[-6,-80],[-12,0]], fingers:0},
+};
+const INV = {
+  rest:    {hip:[0,-166], neck:[0,-312], head:[4,-358], tilt:0, eye:1, look:[1,0], brow:0, mouth:.1, open:0, hunch:0,
+            armN:[[22,-238],[44,-190]], armF:[[-14,-236],[-16,-180]], legN:[[6,-84],[10,0]], legF:[[-8,-84],[-12,0]], fingers:0, prop:0},
+  lens:    {hip:[0,-166], neck:[6,-312], head:[16,-356], tilt:.1, eye:1, look:[1,-.2], brow:.2, mouth:0, open:0, hunch:.1,
+            armN:[[48,-262],[84,-300]], armF:[[-14,-236],[-16,-180]], legN:[[6,-84],[10,0]], legF:[[-8,-84],[-12,0]], fingers:0, prop:1},
+  puzzled: {hip:[0,-166], neck:[-2,-312], head:[-4,-356], tilt:-.28, eye:1, look:[1,-.6], brow:.9, mouth:-.45, open:.15, hunch:0,
+            armN:[[40,-292],[20,-384]], armF:[[-14,-236],[-16,-180]], legN:[[6,-84],[10,0]], legF:[[-8,-84],[-12,0]], fingers:1, prop:0},
+  pleased: {hip:[0,-166], neck:[2,-314], head:[8,-360], tilt:.05, eye:1, look:[1,0], brow:.4, mouth:.95, open:.25, hunch:0,
+            armN:[[40,-250],[74,-262]], armF:[[-14,-236],[-16,-180]], legN:[[6,-84],[10,0]], legF:[[-8,-84],[-12,0]], fingers:0, prop:1},
+};
+const HEAD = [[0,-44],[22,-40],[35,-24],[40,-2],[37,17],[26,35],[8,45],[-12,43],[-29,32],[-38,12],[-38,-12],[-27,-33],[-12,-42]];
+const HAIR_M = [[-40,-2],[-42,-28],[-27,-48],[2,-54],[29,-46],[41,-26],[33,-30],[14,-37],[-6,-33],[-24,-22],[-32,-6]];
+const HAIR_I = [[-40,6],[-43,-22],[-31,-44],[-8,-54],[18,-52],[36,-40],[40,-24],[26,-36],[4,-42],[-18,-36],[-30,-20],[-34,4]];
+function limb(pts, ws) {                       // continuous sleeve / trouser contour from an authored centreline
+  const [a, b, c] = pts, q = [a, vlerp(a, b, .5), b, vlerp(b, c, .5), c], w = [ws[0], lerp(ws[0], ws[1], .5), ws[1], lerp(ws[1], ws[2], .5), ws[2]];
+  const n = q.map((p, i) => vperp(vunit(vsub(q[Math.min(4, i + 1)], q[Math.max(0, i - 1)]))));
+  const L = q.map((p, i) => vadd(p, vmul(n[i], w[i]))), R = q.map((p, i) => vsub(p, vmul(n[i], w[i])));
+  const bend = Math.sign((b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]));
+  return {L, R, fill: polyPath(smoothPts([...L, ...R.slice().reverse()], true, 3, .6)), bend, dir: vunit(vsub(c, b)), end: c, mid: b, n: n[2]};
+}
+function buildFigure(P, kind) {
+  const strokes = [], fills = [], order = [];         // order: [{fills:[[path,color]], strokes:[...] }]
+  let group;
+  const begin = () => { group = {fills: [], strokes: []}; order.push(group); };
+  const S_ = (id, points, width = 2.6, extra = {}) => group.strokes.push({id, points, width, opacity: 1, pressure: [[0, .25], [.15, .9], [.6, 1], [1, .3]], ...extra});
+  const F_ = (path, color) => group.fills.push([path, color]);
+  const down = vunit(vsub(P.hip, P.neck)), n = vperp(vmul(down, -1)), T = t => vlerp(P.hip, P.neck, t);
+  const shN = vadd(vadd(P.neck, vmul(down, 24)), vmul(n, -4)), shF = vadd(vadd(P.neck, vmul(down, 20)), vmul(n, 8));
+  const cloth = kind === 'man' ? SLATE : OCHRE, clothL = kind === 'man' ? '#7b8793' : '#e7bb62';
+  const arm = (id, sh, [el, hd]) => {
+    begin(); const A = limb([sh, el, hd], [13, 11, 9]);
+    F_(A.fill, cloth); S_(id + '/a', A.L); S_(id + '/b', A.R);
+    const cuffA = vadd(hd, vmul(A.n, 10)), cuffB = vsub(hd, vmul(A.n, 10));
+    S_(id + '/cuff', [cuffA, vadd(vlerp(cuffA, cuffB, .5), vmul(A.dir, -3)), cuffB], 1.8);
+    const crease = A.bend > 0 ? A.R : A.L;           // the concave side of the elbow gets a short crease
+    S_(id + '/crease', [vlerp(crease[1], crease[2], .6), vadd(crease[2], vmul(A.n, A.bend > 0 ? 4 : -4)), vlerp(crease[2], crease[3], .35)], 1.3);
+    const d = A.dir, nn = vperp(d), H = (x, y) => vadd(vadd(hd, vmul(d, x)), vmul(nn, y));
+    const f = P.fingers || 0;
+    const hand = [H(0, -8), H(12, -10), H(22 + f * 4, -7), H(26 + f * 6, 0), H(22 + f * 4, 7), H(10, 9), H(0, 8)];
+    F_(polyPath(smoothPts(hand, true, 3, 1)), SKIN); S_(id + '/hand', [...hand, hand[0]], 2.1);
+    S_(id + '/thumb', [H(8, -9), H(14, -17 - f * 3), H(20, -14 - f * 2)], 1.8);
+  };
+  const leg = (id, [kn, ft]) => {
+    begin(); const hipP = vadd(P.hip, vmul(n, id === 'legN' ? 12 : -12)), A = limb([hipP, kn, vadd(ft, [0, -12])], [18, 15, 12]);
+    F_(A.fill, kind === 'man' ? TROUSER : '#4c4a58'); S_(id + '/a', A.L, 2.4); S_(id + '/b', A.R, 2.4);
+    const shoe = [[-12, -14], [12, -16], [30, -10], [38, -2], [36, 2], [-14, 2]].map(p => vadd(ft, p));
+    F_(polyPath(smoothPts(shoe, true, 3, 1.2)), INK); S_(id + '/shoe', [...shoe, shoe[0]], 2);
+  };
+  arm('armF', shF, P.armF); leg('legF', P.legF); leg('legN', P.legN);
+  // torso: one jacket contour, collar to hem to back; hunch rounds the back
+  begin();
+  const cF = vadd(P.neck, vmul(n, 22)), chF = vadd(T(.64), vmul(n, 36)), wF = vadd(T(.28), vmul(n, 35)), hemF = vadd(vadd(P.hip, vmul(down, 18)), vmul(n, 37));
+  const cB = vadd(P.neck, vmul(n, -21)), chB = vadd(T(.64), vmul(n, -34 - P.hunch * 12)), wB = vadd(T(.28), vmul(n, -33)), hemB = vadd(vadd(P.hip, vmul(down, 18)), vmul(n, -35));
+  const hemM = vadd(P.hip, vmul(down, 22));
+  const body = [cF, chF, wF, hemF, hemM, hemB, wB, chB, cB];
+  F_(polyPath(smoothPts(body, true, 3, 1.1)), cloth);
+  S_('torso/front', [cF, chF, wF, hemF], 2.8); S_('torso/hem', [hemF, hemM, hemB], 2.4); S_('torso/back', [hemB, wB, chB, cB], 2.8);
+  if (kind === 'man') {
+    const v = [vadd(P.neck, vmul(n, 14)), vadd(T(.62), vmul(n, 15)), vadd(P.neck, vmul(n, -6))];
+    F_(polyPath(v), CREAM);
+    const tie = [vadd(vadd(P.neck, vmul(n, 6)), vmul(down, 6)), vadd(T(.84), vmul(n, 12)), vadd(T(.56), vmul(n, 14)), vadd(T(.62), vmul(n, 6)), vadd(T(.84), vmul(n, 3))];
+    F_(polyPath(tie), RED); S_('tie', [...tie, tie[0]], 1.6);
+    S_('lapel/f', [vadd(P.neck, vmul(n, 18)), vadd(T(.62), vmul(n, 17)), vadd(T(.5), vmul(n, 22))], 1.8);
+    S_('lapel/b', [vadd(P.neck, vmul(n, -8)), vadd(T(.7), vmul(n, 2)), vadd(T(.5), vmul(n, 8))], 1.5);
+    S_('button', [vadd(T(.38), vmul(n, 22)), vadd(T(.36), vmul(n, 25)), vadd(T(.34), vmul(n, 22))], 2.2);
+  } else {
+    const col = [vadd(P.neck, vmul(n, 20)), vadd(vadd(P.neck, vmul(down, -14)), vmul(n, 16)), vadd(vadd(P.neck, vmul(down, -14)), vmul(n, -16)), vadd(P.neck, vmul(n, -20))];
+    F_(polyPath(smoothPts(col, true, 3, 1.2)), clothL); S_('collar', [...col, col[0]], 2);
+    for (let k = 0; k < 5; k++) { const u = (k + .5) / 5; const a = vlerp(hemF, hemB, u); S_('rib/' + k, [vadd(a, vmul(down, -12)), a], 1.2, {opacity: .7}); }
+  }
+  // head
+  begin();
+  const R = P.tilt, Hp = p => vadd(P.head, vrot(p, R));
+  const head = HEAD.map(Hp);
+  F_(polyPath(smoothPts(head, true, 3, 2)), SKIN); S_('head', [...head, head[0]], 2.6, {close: false});
+  S_('ear', [[-10, -8], [-19, -12], [-21, 3], [-12, 9]].map(Hp), 1.8);
+  const hair = (kind === 'man' ? HAIR_M : HAIR_I).map(Hp);
+  F_(polyPath(smoothPts(hair, true, 3, 1.2)), kind === 'man' ? '#3b3129' : '#9d968c'); S_('hair', [...hair, hair[0]], 1.8);
+  S_('nose', [[35, -8], [45, 7], [36, 12]].map(Hp), 2, {corner: 1});
+  const eyeY = -2, eyes = [[12, eyeY], [30, eyeY - 1]];
+  const b = P.brow;
+  eyes.forEach(([ex, ey], k) => {
+    const inner = k === 0 ? 5 : -5, y0 = ey - 15 - b * 5;
+    S_('brow/' + k, [[ex - 6, y0 + (k === 0 ? b * 3 : -b * 3) * 0], [ex, y0 - 1], [ex + 6, y0]].map(([x, y], j) => Hp([x, y + (j === (k === 0 ? 2 : 0) ? -b * 3 : 0)])), 2);
+  });
+  const m = P.mouth, mo = P.open;
+  const mouth = [[13, 23], [19, 24 + m * 6], [27, 24 + m * 6], [33, 21]].map(Hp);
+  S_('mouth', mouth, 2);
+  if (kind === 'inv') {                                  // round glasses
+    eyes.forEach(([ex, ey], k) => S_('glass/' + k, ellPts(ex, ey, 9.5, 9, 0, 12).map(Hp).concat([Hp([ex + 9.5, ey])]), 1.6));
+    S_('glass/bridge', [[21, eyeY - 1], [23, eyeY - 3], [25, eyeY - 1]].map(Hp), 1.4);
+  }
+  const face = {eyes: eyes.map(e => Hp(e)), eye: P.eye, look: P.look, tilt: R, mouth, open: mo, m, Hp};
+  // near arm last, in front of the body
+  arm('armN', shN, P.armN);
+  return {order, face};
+}
+const _figCache = new Map();
+function figure(kind, key, P) {
+  const k = kind + '|' + key;
+  if (!_figCache.has(k)) {
+    if (_figCache.size > 400) _figCache.delete(_figCache.keys().next().value);
+    const f = buildFigure(P, kind);
+    f.order = f.order.map((g, i) => ({fills: g.fills, cel: compileCel({strokes: g.strokes}, {id: kind + '/g' + i})}));
+    _figCache.set(k, f);
+  }
+  return _figCache.get(k);
+}
+function drawFigure(c, f) {
+  for (const g of f.order) { for (const [p, col] of g.fills) printFill(c, p, col); drawCel(c, g.cel, {material: 'ink', color: INK}); }
+  const {eyes, eye, look, Hp, tilt, mouth, open} = f.face;
+  c.save(); c.fillStyle = INK;
+  for (const [x, y] of eyes) {
+    if (eye > .35) { c.beginPath(); c.ellipse(x + look[0] * 1.6, y + look[1] * 1.6, 3.4, 4.6 * Math.min(eye, 1.2), tilt, 0, TAU); c.fill(); }
+    else { c.strokeStyle = INK; c.lineWidth = 2.2; c.lineCap = 'round'; c.beginPath(); c.moveTo(x - 6, y + 1); c.quadraticCurveTo(x, y - 3, x + 6, y + 1); c.stroke(); }
+  }
+  if (open > .05) { const lo = mouth.map((p, i) => i === 0 || i === 3 ? p : vadd(p, vrot([0, open * 12], tilt))); c.fillStyle = '#6e2a22'; c.fill(polyPath(smoothPts([...mouth, ...lo.slice(1, 3).reverse()], true, 2, 2))); }
+  c.restore();
+}
+// Pose timelines: [[time, poseName], ...]; the same pose twice is a hold. Sampled on twos.
+function poseAt(set, keys, t, ease = easeInOutSine) {
+  t = snap2(t);
+  if (t <= keys[0][0]) return {key: keys[0][1], P: set[keys[0][1]]};
+  for (let k = 0; k < keys.length - 1; k++) {
+    const [t0, a] = keys[k], [t1, b, e] = keys[k + 1];
+    if (t < t1) { if (a === b) return {key: a, P: set[a]}; const u = Math.round((e || ease)(clamp((t - t0) / (t1 - t0), 0, 1)) * 48) / 48;
+      return {key: `${a}>${b}@${u}`, P: lerpDeep(set[a], set[b], u)}; }
+  }
+  const last = keys[keys.length - 1][1]; return {key: last, P: set[last]};
+}
+function actor(c, kind, keys, t, x, y = 900, {dir = kind === 'man' ? 1 : -1, scale = 1, ease} = {}) {
+  const set = kind === 'man' ? MAN : INV, {key, P} = poseAt(set, keys, t, ease), f = figure(kind, key, P);
+  c.save(); c.translate(x, y); c.scale(dir * scale, scale); drawFigure(c, f);
+  if (P.prop > .5) {                                          // magnifier held in the near hand, along the forearm
+    const [el, hd] = P.armN, d = vunit(vsub(hd, el)), g = vadd(hd, vmul(d, 44));
+    c.strokeStyle = INK; c.lineCap = 'round'; c.lineWidth = 7; c.beginPath(); c.moveTo(...vadd(hd, vmul(d, -4))); c.lineTo(...vadd(hd, vmul(d, 20))); c.stroke();
+    c.fillStyle = 'rgba(210,230,240,.55)'; c.beginPath(); c.arc(g[0], g[1], 24, 0, TAU); c.fill(); c.lineWidth = 3.4; c.stroke();
+  }
+  c.restore();
+  return {P, local: p => [x + dir * scale * p[0], y + scale * p[1]]};
+}
+// ---------------------------------------------------------------- stage
+const DUCT = {x0: 500, x1: 1345, y: 640, h: 130};
+const RIB = motionPath([[640, 724], [690, 760], [740, 800], [820, 784], [960, 818], [1100, 790], [1240, 812], [1340, 790], [1400, 752], [1430, 730]]);
+const BOARD = {x: 1400, y: 550, cols: 4, rows: 3, s: 60};
+const slot = k => [BOARD.x + (k % 4) * 60 + 30, BOARD.y + Math.floor(k / 4) * 60 + 30];
+function ductMouthIn(c, p = 1) {   // the square opening, drawn over whatever enters it
+  const {x0, y, h} = DUCT;
+  c.save(); c.globalAlpha *= clamp(p * 1.5, 0, 1);
+  const outer = rectPath(x0 - 14, y - h / 2 - 14, 40, h + 28);
+  printFill(c, outer, BLUE, {off: [-2, 2]});
+  inkLine(c, [[x0 - 14, y - h / 2 - 14], [x0 + 26, y - h / 2 - 14], [x0 + 26, y + h / 2 + 14], [x0 - 14, y + h / 2 + 14]], {close: true, seed: 81, w: 2.6});
+  c.restore();
+}
+function duct(c, p = 1, {label = 1, stamp = 0, audit = 0} = {}) {
+  const {x0, x1, y, h} = DUCT, top = y - h / 2, bot = y + h / 2;
+  if (p <= 0) return;
+  const fa = clamp((p - .4) / .6, 0, 1);
+  c.save(); c.globalAlpha *= fa;
+  printFill(c, rectPath(x0, top, x1 - x0, h), BLUE_L, {off: [-3, 3]});
+  c.strokeStyle = alpha(BLUE, .35); c.lineWidth = 1.2; c.beginPath();
+  for (let yy = top + 16; yy < bot - 6; yy += 16) { c.moveTo(x0 + 30, yy); c.lineTo(x1 - 8, yy); }       // ledger ruling
+  for (const xx of [x0 + 140, x0 + 420, x0 + 700]) { c.moveTo(xx, top + 4); c.lineTo(xx, bot - 4); }
+  c.stroke();
+  c.fillStyle = BLUE; for (let xx = x0 + 60; xx < x1; xx += 90) for (const yy of [top + 8, bot - 8]) { c.beginPath(); c.arc(xx, yy, 2.6, 0, TAU); c.fill(); }
+  c.restore();
+  inkLine(c, [[x0, top], [x1, top]], {p: clamp(p * 1.4, 0, 1), seed: 11, w: 3, color: INK});
+  inkLine(c, [[x0, bot], [x1, bot]], {p: clamp(p * 1.4 - .15, 0, 1), seed: 12, w: 3, color: INK});
+  inkLine(c, [[x1, top], [x1, bot]], {p: clamp(p * 2 - 1, 0, 1), seed: 13, w: 2.6});
+  if (label) {
+    write(c, 'Item 8 · Financial statements', x0 + 10, top - 26, {size: 40, color: BLUE, p: label, weight: 700});
+  }
+  if (stamp > 0) {                                     // the GAAP stamp lands: scale from 1.35 to 1 on ones
+    const s = 1 + .35 * (1 - easeOutQuint(clamp(stamp, 0, 1))), a = clamp(stamp * 3, 0, 1);
+    c.save(); c.translate(x0 + 480, y); c.rotate(-.08); c.scale(s, s); c.globalAlpha *= a;
+    c.strokeStyle = RED; c.lineWidth = 4; c.strokeRect(-92, -34, 184, 68); c.lineWidth = 1.5; c.strokeRect(-84, -26, 168, 52);
+    write(c, 'GAAP rules', 0, 14, {size: 42, color: RED, align: 'center', weight: 700}); c.restore();
+  }
+  if (audit > 0) {
+    c.save(); c.translate(x1 - 150, top - 44);
+    inkLine(c, [[-8, 0], [4, 12], [26, -16]], {p: clamp(audit * 1.6, 0, 1), seed: 16, w: 4.5, color: BLUE, amp: .6});
+    write(c, 'audited', 34, 8, {size: 34, color: BLUE, p: clamp(audit * 1.6 - .5, 0, 1)}); c.restore();
+  }
+}
+function ribbon(c, p = 1, {label = 1} = {}) {
+  if (p <= .01) return;
+  const n = 90, L = [], R = [], w = 30;
+  for (let i = 0; i <= n; i++) { const u = i / n * p, a = RIB.at(u), nn = vperp(a.tangent), ww = w * (1 - .35 * u); L.push(vadd(a.p, vmul(nn, ww))); R.push(vsub(a.p, vmul(nn, ww))); }
+  const band = polyPath([...L, ...R.slice().reverse()]);
+  printFill(c, band, RED_L, {off: [-3, 3]}); printFill(c, band, CREAM, {off: [0, 0], al: .55});
+  c.save(); c.clip(band); c.strokeStyle = alpha(RED, .45); c.lineWidth = 2; c.lineCap = 'round';
+  for (let i = 0; i < 26; i++) { const u0 = i / 26 + .006, u1 = u0 + .022 + hash(i, 4) * .012; if (u1 > p) break;
+    for (const off of [-10, 2, 13]) { if (hash(i * 3 + off, 5) < .2) continue; const a = RIB.at(u0), b = RIB.at(u1), na = vperp(a.tangent), nb = vperp(b.tangent);
+      c.beginPath(); c.moveTo(...vadd(a.p, vmul(na, off * (1 - .35 * u0)))); c.lineTo(...vadd(b.p, vmul(nb, off * (1 - .35 * u1)))); c.stroke(); } }
+  c.restore();
+  c.save(); c.strokeStyle = RED; c.lineWidth = 2.6; c.lineCap = 'round';
+  c.beginPath(); L.forEach((q, i) => i ? c.lineTo(...q) : c.moveTo(...q)); c.stroke();
+  c.beginPath(); R.forEach((q, i) => i ? c.lineTo(...q) : c.moveTo(...q)); c.stroke(); c.restore();
+  if (label) write(c, "Item 7 · MD&A: management's narrative", 690, 890, {size: 40, color: RED, p: label, weight: 700});
+}
+function lectern(c) {
+  const top = 716;
+  const desk = polyPath([[540, top], [640, top - 10], [648, top + 6], [548, top + 16]]);
+  printFill(c, desk, '#b88a5a'); inkLine(c, [[540, top], [640, top - 10], [648, top + 6], [548, top + 16]], {close: true, seed: 31, w: 2.4});
+  inkLine(c, [[560, top + 14], [566, 900]], {seed: 32, w: 3}); inkLine(c, [[628, top + 4], [622, 900]], {seed: 33, w: 3});
+  inkLine(c, [[556, 900], [640, 900]], {seed: 34, w: 2.2});
+}
+function ground(c) { c.save(); c.globalAlpha = .55; inkLine(c, [[40, 904], [520, 902]], {seed: 41, w: 1.8, color: GREY}); inkLine(c, [[1560, 902], [1880, 904]], {seed: 42, w: 1.8, color: GREY}); c.restore(); }
+function building(c, kind, p = 1) {
+  if (p <= 0) return;
+  c.save(); c.globalAlpha *= clamp(p, 0, 1);
+  if (kind === 'office') {
+    const b = [[30, 900], [30, 470], [170, 440], [170, 900]];
+    printFill(c, polyPath(b), '#e3dccb'); inkLine(c, b, {seed: 51, w: 2.2, color: GREY});
+    for (let r = 0; r < 6; r++) for (let q = 0; q < 2; q++) c.strokeStyle = GREY, c.lineWidth = 1.6, c.strokeRect(56 + q * 58, 500 + r * 62, 32, 36);
+    write(c, 'the firm', 100, 436, {size: 34, color: GREY, align: 'center'});
+  } else if (kind === 'factory') {
+    const b = [[40, 900], [40, 640], [95, 590], [95, 640], [150, 590], [150, 640], [205, 590], [205, 900]];
+    printFill(c, polyPath(b), '#e0cfc0'); inkLine(c, b, {seed: 52, w: 2.4, color: INK, amp: .8});
+    inkLine(c, [[165, 590], [165, 470], [190, 470], [190, 590]], {seed: 53, w: 2.4});
+    c.fillStyle = alpha(GREY, .35); for (const [x, y, r] of [[182, 440, 18], [200, 405, 24], [226, 368, 28]]) { c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill(); }
+    for (let q = 0; q < 3; q++) c.strokeStyle = INK, c.lineWidth = 1.6, c.strokeRect(58 + q * 50, 700, 30, 40);
+    write(c, 'factory, machines, inventory', 30, 960, {size: 32, color: GREY});
+  } else {
+    const b = [[50, 900], [50, 520], [210, 520], [210, 900]];
+    printFill(c, polyPath(b), OCHRE_L); inkLine(c, [...b, b[0]], {seed: 54, w: 2.4});
+    bulb(c, 130, 610, 1.1);
+    for (let r = 0; r < 2; r++) for (let q = 0; q < 3; q++) c.strokeStyle = INK, c.lineWidth = 1.6, c.strokeRect(70 + q * 45, 720 + r * 70, 28, 44);
+    write(c, 'ideas, software, brands', 30, 960, {size: 32, color: GREY});
+  }
+  c.restore();
+}
+function bulb(c, x, y, s = 1, color = OCHRE) {
+  c.save(); c.translate(x, y); c.scale(s, s);
+  const g = [[-20, 8], [-30, -12], [-24, -36], [0, -48], [24, -36], [30, -12], [20, 8], [14, 22], [-14, 22]];
+  printFill(c, polyPath(smoothPts(g, true, 3, 1)), color, {off: [-2, 2]}); inkLine(c, [...g, g[0]], {seed: 61, w: 2.2, amp: .5});
+  inkLine(c, [[-12, 30], [12, 30]], {seed: 62, w: 2.2, amp: .3}); inkLine(c, [[-9, 37], [9, 37]], {seed: 63, w: 2.2, amp: .3});
+  inkLine(c, [[-7, 20], [-4, -8], [0, 0], [4, -8], [7, 20]], {seed: 64, w: 1.6, amp: .3}); c.restore();
+}
+function gear(c, x, y, r, color = INK) {
+  c.save(); c.translate(x, y); const pts = []; for (let k = 0; k < 24; k++) { const a = k / 24 * TAU, rr = (k % 3 === 0) ? r * 1.25 : r; pts.push([Math.cos(a) * rr, Math.sin(a) * rr]); }
+  c.strokeStyle = color; c.lineWidth = 2.2; c.lineJoin = 'round'; c.stroke(polyPath(pts)); c.beginPath(); c.arc(0, 0, r * .35, 0, TAU); c.stroke(); c.restore();
+}
+// the investor's picture of the firm: a 4x3 board; each tile shows part of the picture
+function boardPicture(c, pic) {
+  const {x, y} = BOARD;
+  if (pic === 'factory') {
+    const b = [[x + 20, y + 170], [x + 20, y + 90], [x + 70, y + 55], [x + 70, y + 90], [x + 120, y + 55], [x + 120, y + 90], [x + 170, y + 55], [x + 170, y + 170]];
+    c.fillStyle = alpha(INK, .75); c.fill(polyPath(b)); c.fillRect(x + 185, y + 25, 22, 145);
+  } else {
+    bulb(c, x + 120, y + 105, 1.55, alpha(INK, .6));
+    c.strokeStyle = alpha(INK, .75); c.lineWidth = 5; c.lineCap = 'round'; c.beginPath(); c.moveTo(x + 14, y + 165); c.lineTo(x + 70, y + 130); c.lineTo(x + 110, y + 148); c.lineTo(x + 226, y + 30); c.stroke();
+  }
+}
+function board(c, tiles, tau, {pic = 'factory', label = 1, gaps = 0} = {}) {
+  const {x, y, s} = BOARD, w = s * 4, h = s * 3;
+  printFill(c, rectPath(x - 12, y - 12, w + 24, h + 24), '#e7dfcf');
+  inkLine(c, [[x - 12, y - 12], [x + w + 12, y - 12], [x + w + 12, y + h + 12], [x - 12, y + h + 12]], {close: true, seed: 71, w: 3});
+  c.save(); c.strokeStyle = alpha(GREY, .5); c.lineWidth = 1.2; c.setLineDash([5, 6]);
+  for (let k = 0; k < 12; k++) { const [cx, cy] = slot(k); c.strokeRect(cx - 28, cy - 28, 56, 56); } c.restore();
+  if (gaps > 0) { c.save(); c.globalAlpha *= clamp(gaps, 0, 1); c.strokeStyle = RED; c.lineWidth = 3; c.setLineDash([8, 7]);
+    for (let k = 0; k < 12; k++) if (!tiles.some(t => t.k === k && tau >= t.t)) { const [cx, cy] = slot(k); c.strokeRect(cx - 26, cy - 26, 52, 52); } c.restore(); }
+  for (const t of tiles) {
+    const u = clamp((tau - t.t + .55) / .55, 0, 1); if (u <= 0) continue;
+    const [sx, sy] = slot(t.k), from = t.from || (t.c === 'b' ? [DUCT.x1 + 10, DUCT.y] : [1430, 740]);
+    const e = easeInOutSine(u), px = lerp(from[0], sx, e), py = lerp(from[1], sy, e) - Math.sin(Math.PI * e) * 60;
+    c.save(); c.translate(px, py); const sc = u < 1 ? .6 + .4 * e : 1; c.scale(sc, sc);
+    const tp = rectPath(-28, -28, 56, 56);
+    c.fillStyle = t.c === 'b' ? BLUE_L : RED_L; c.fill(tp);
+    if (u >= 1) { c.save(); c.clip(tp); c.translate(-sx, -sy); boardPicture(c, pic); c.restore(); }
+    c.strokeStyle = t.c === 'b' ? BLUE : RED; c.lineWidth = 3; c.stroke(tp); c.restore();
+  }
+  if (label) write(c, "the investor's picture", x + w / 2 + 40, y - 26, {size: 34, color: GREY, align: 'center', p: label});
+}
+function crate(c, x, y, s = 1) {
+  c.save(); c.translate(x, y); c.scale(s, s);
+  const b = rectPath(-46, -46, 92, 92); printFill(c, b, BLUE_L); c.fillStyle = alpha(BLUE, .18); c.fill(b);
+  inkLine(c, [[-46, -46], [46, -46], [46, 46], [-46, 46]], {close: true, seed: 91, w: 2.8, amp: .6});
+  inkLine(c, [[-46, -46], [46, 46]], {seed: 92, w: 1.6, amp: .5, color: BLUE}); inkLine(c, [[46, -46], [-46, 46]], {seed: 93, w: 1.6, amp: .5, color: BLUE});
+  c.restore();
+}
+// the "ideas" blob: soft, too big for the square mouth; squash k flattens it against the mouth plane
+const BLOB_FLOOR = [372, 812];
+const BLOB = blob(0, 0, 105, 92, 7, {amp: .09, n: 40});
+function ideaBlob(c, x, y, {k = 0, flatX = Infinity} = {}) {
+  const sx = 1 - .18 * k, sy = 1 + .16 * k;
+  const pts = BLOB.map(([px, py]) => { let X = x + px * sx, Y = y + py * sy; if (X > flatX) { const over = X - flatX; X = flatX + over * .08; Y += Math.sign(py) * over * .25; } return [X, Y]; });
+  const path = polyPath(smoothPts(pts, true, 3, 2));
+  printFill(c, path, OCHRE_L); c.save(); c.clip(path);
+  c.globalAlpha = .9; bulb(c, x - 30 * sx, y - 8, .8); gear(c, x + 40 * sx, y - 34 * sy, 17); gear(c, x + 60 * sx, y + 2, 11);
+  write(c, '</>', x + 18 * sx, y + 58 * sy, {size: 40, color: INK, align: 'center', weight: 700});
+  write(c, '™', x - 62 * sx, y + 46 * sy, {size: 44, color: RED, align: 'center', weight: 700});
+  c.restore();
+  inkLine(c, [...pts, pts[0]], {seed: 95, w: 3, amp: .4});
+}
+// inset chart: price against what earnings + book value predict
+function inset(c, tau, t0, {spread = 0, show = 1, label = '', formula = 0} = {}) {
+  if (show <= 0) return;
+  const x = 1300, y = 110, w = 420, h = 280, a = clamp(show, 0, 1);
+  c.save(); c.globalAlpha *= a;
+  printFill(c, rectPath(x, y, w, h), '#f8f2e4', {off: [0, 0]});
+  c.strokeStyle = alpha(GREY, .6); c.lineWidth = 1.4; c.strokeRect(x, y, w, h);
+  inkLine(c, [[x + 50, y + 30], [x + 50, y + h - 50], [x + w - 24, y + h - 50]], {seed: 101, w: 2.2});
+  write(c, 'price', x + 16, y + 40, {size: 26, color: GREY}); write(c, 'earnings + book value', x + w - 24, y + h - 16, {size: 26, color: GREY, align: 'right'});
+  inkLine(c, [[x + 70, y + h - 70], [x + w - 40, y + 50]], {seed: 102, w: 2, color: BLUE, alpha: .8, p: clamp((tau - t0) / .8, 0, 1)});
+  for (let k = 0; k < 16; k++) {
+    const u = (k + .5) / 16, px = lerp(x + 75, x + w - 45, u), py0 = lerp(y + h - 72, y + 52, u);
+    const off = (hash(k, 3) - .5) * 2 * (6 + 120 * spread) ;
+    const show = clamp((tau - t0 - .2 - k * .05) / .2, 0, 1); if (show <= 0) continue;
+    c.fillStyle = INK; c.beginPath(); c.arc(px, clamp(py0 + off, y + 34, y + h - 58), 5.2 * show, 0, TAU); c.fill();
+  }
+  if (label) write(c, label, spread ? x + w - 36 : x + 80, y + 64 + (spread ? 40 : 0), {size: 38, color: spread ? RED : BLUE, align: spread ? 'right' : 'left', weight: 700, p: clamp((tau - t0 - 1.1) * 2, 0, 1)});
+  c.restore();
+  if (formula > 0) {
+    c.save(); c.translate(x + 10, y + h + 64);
+    write(c, 'inadequacy = 1 − R²', 0, 0, {size: 50, color: RED, weight: 700, p: formula});
+    c.restore();
+  }
+}
+function bubble(c, x, y, w, h, fromX, fromY, a = 1, draw) {
+  if (a <= 0) return; c.save(); c.globalAlpha *= clamp(a, 0, 1);
+  const pts = blob(x, y, w / 2, h / 2, 17, {amp: .06, n: 36}), path = polyPath(smoothPts(pts, true, 3, 2));
+  c.fillStyle = CREAM; c.fill(path); inkLine(c, [...pts, pts[0]], {seed: 111, w: 2.4, amp: .3});
+  for (let k = 0; k < 3; k++) { const u = (k + 1) / 4, r = 5 + k * 3; c.beginPath(); c.arc(lerp(fromX, x - w * .15, u), lerp(fromY, y + h / 2, u), r, 0, TAU); c.fillStyle = CREAM; c.fill(); c.strokeStyle = INK; c.lineWidth = 2; c.stroke(); }
+  if (draw) draw(c); c.restore();
+}
+function card(c, text, x, y, rot, color, {w = 190, h = 52, arrow = false} = {}) {
+  c.save(); c.translate(x, y); c.rotate(rot);
+  const r = rectPath(-w / 2, -h / 2, w, h); c.fillStyle = CREAM; c.fill(r); c.strokeStyle = color; c.lineWidth = 3; c.stroke(r);
+  if (arrow) { c.strokeStyle = color; c.lineWidth = 3; c.beginPath(); c.moveTo(w / 2 - 36, 0); c.lineTo(w / 2 - 12, 0); c.moveTo(w / 2 - 20, -8); c.lineTo(w / 2 - 12, 0); c.lineTo(w / 2 - 20, 8); c.stroke(); }
+  write(c, text, arrow ? -14 : 0, 10, {size: 30, color: INK, align: 'center', weight: 700}); c.restore();
+}
+function pen(c, x, y, rot = -.9) {
+  c.save(); c.translate(x, y); c.rotate(rot);
+  const b = [[0, 0], [14, -5], [80, -5], [84, 0], [80, 5], [14, 5]]; printFill(c, polyPath(b), RED, {off: [0, 0]}); inkLine(c, [...b, b[0]], {seed: 121, w: 2, amp: .2});
+  c.restore();
+}
+function caption(c, text, tau, t0, {x = 90, y = 110, size = 56, color = INK} = {}) { write(c, text, x, y, {size, color, weight: 700, p: writeP(tau, t0, text, 30)}); }
+
+// ---------------------------------------------------------------- scenes
+function sceneTitle(c, tau) {
+  paper(c, PAPER, null, 5);
+  const l = LN('title', 0);
+  const p = clamp((tau - .2) / 1.1, 0, 1);
+  // the annual report, drawn once, then its two sections are tabbed
+  const bx = CX - 170, by = 330, bw = 340, bh = 440;
+  c.save(); c.globalAlpha = easeOut(p);
+  printFill(c, rectPath(bx + 16, by + 12, bw, bh), '#ddd3bf'); printFill(c, rectPath(bx, by, bw, bh), '#f9f4e8', {off: [0, 0]});
+  c.restore();
+  inkLine(c, [[bx, by], [bx + bw, by], [bx + bw, by + bh], [bx, by + bh]], {close: true, p, seed: 3, w: 3});
+  write(c, 'Annual report', CX, by + 80, {size: 54, align: 'center', weight: 700, p: writeP(tau, .6, 'Annual report')});
+  write(c, 'Form 10-K', CX, by + 124, {size: 34, align: 'center', color: GREY, p: writeP(tau, 1.0, 'Form 10-K')});
+  c.save(); c.strokeStyle = alpha(GREY, .5); c.lineWidth = 2; for (let k = 0; k < 7; k++) { const q = clamp((tau - 1.2 - k * .08) / .3, 0, 1); if (q <= 0) continue; c.beginPath(); c.moveTo(bx + 40, by + 170 + k * 22); c.lineTo(bx + 40 + (bw - 90 - (k % 3) * 30) * q, by + 170 + k * 22); c.stroke(); } c.restore();
+  const tab = (t0, color, light, label, y, side, tl = 250) => {
+    const u = easeOutBack(clamp((tau - t0) / .5, 0, 1)); if (u <= 0) return;
+    const x = side > 0 ? bx + bw : bx, len = tl * u;
+    c.save(); const r = side > 0 ? rectPath(x - 8, y - 32, len + 8, 64) : rectPath(x - len, y - 32, len + 8, 64);
+    printFill(c, r, light); c.strokeStyle = color; c.lineWidth = 3; c.stroke(r);
+    if (u > .9) write(c, label, side > 0 ? x + 20 : x - 20, y + 12, {size: 36, color, weight: 700, align: side > 0 ? 'left' : 'right'});
+    c.restore();
+  };
+  tab(at('title', 0, .72), RED, RED_L, 'Item 7 · MD&A', by + 300, -1);
+  tab(at('title', 0, .82), BLUE, BLUE_L, 'Item 8 · Financial statements', by + 380, 1, 440);
+  write(c, 'Two channels', CX, 190, {size: 104, align: 'center', weight: 700, p: writeP(tau, .3, 'Two channels', 16)});
+  write(c, 'Financial statement adequacy and firms’ MD&A disclosures', CX, 262, {size: 40, align: 'center', color: GREY, p: writeP(tau, 1.3, 'Financial statement adequacy and firms’ MD&A disclosures', 40)});
+  write(c, 'Brown, Hinson & Tucker · Contemporary Accounting Research (2024)', CX, 890, {size: 34, align: 'center', color: GREY, p: writeP(tau, 2.2, 'Brown, Hinson & Tucker · Contemporary Accounting Research (2024)', 45)});
+}
+function stageBase(c, {building: bk = 'office', ductP = 1, ribP = 1, labels = 1, stamp = 1, audit = 1} = {}) {
+  paper(c, PAPER, null, 5);
+  building(c, bk); ground(c);
+  duct(c, ductP, {label: labels, stamp, audit}); lectern(c); ribbon(c, ribP, {label: labels});
+}
+function sceneChannels(c, tau) {
+  const l0 = LN('channels', 0), l1 = LN('channels', 1);
+  const ductP = clamp((tau - l0.start - .1) / 1.6, 0, 1), ribP = easeInOutSine(clamp((tau - l1.start - .2) / 2.4, 0, 1));
+  paper(c, PAPER, null, 5); building(c, 'office'); ground(c);
+  duct(c, ductP, {label: writeP(tau, l0.start + .6, 'Item 8 · Financial statements'), stamp: clamp((tau - at('channels', 0, .5)) / .35, 0, 1), audit: clamp((tau - at('channels', 0, .82)) / .6, 0, 1)});
+  ductMouthIn(c, ductP);
+  lectern(c); ribbon(c, ribP, {label: writeP(tau, l1.start + 1.2, "Item 7 · MD&A: management's narrative")});
+  board(c, [], tau, {label: writeP(tau, 1, "the investor's picture")});
+  actor(c, 'man', [[0, 'rest'], [l1.start + .2, 'rest'], [l1.start + .9, 'look'], [l1.end - .4, 'look'], [l1.end + .3, 'rest']], tau, 250);
+  actor(c, 'inv', [[0, 'rest'], [l0.start + 1.8, 'rest'], [l0.start + 2.6, 'lens'], [l1.end, 'lens']], tau, 1770);
+  caption(c, 'Two ways to reach the investor', tau, .3);
+  write(c, 'strict: rules, audit', 780, 470, {size: 38, color: BLUE, p: writeP(tau, at('channels', 0, .6), 'strict: rules, audit'), rot: -.02});
+  write(c, 'flexible: words, context, outlook', 760, 990, {size: 38, color: RED, p: writeP(tau, l1.start + 3.2, 'flexible: words, context, outlook')});
+}
+// push-the-object action shared by "fits" and "stuck"
+function sceneFits(c, tau) {
+  const l = LN('fits', 0);
+  const tStep = .5, tPush = 1.3, tRel = 2.1;
+  stageBase(c, {building: 'factory'});
+  const tiles = Array.from({length: 12}, (_, k) => ({k, c: 'b', t: 3.0 + k * .12}));
+  board(c, tiles, tau, {pic: 'factory'});
+  const m = actor(c, 'man', [[0, 'hold'], [tStep, 'hold'], [tStep + .5, 'step'], [tPush, 'push1'], [tRel + .2, 'push1'], [tRel + .9, 'rest'], [5.2, 'rest'], [5.8, 'pleased']], tau, 250);
+  // the crate rides the near hand until release, then slides into the duct at constant speed
+  const hand = m.local(m.P.armN[1]);
+  const tq = snap2(tau);
+  let cx = hand[0] + 50, cy = hand[1] + 6;
+  if (tq > tRel) { const u = clamp((tq - tRel) / 1.0, 0, 1); cx = lerp(MAN.push1.armN[1][0] + 250 + 50, DUCT.x0 + 160, u); cy = lerp(MAN.push1.armN[1][1] + 900 + 6, DUCT.y, clamp(u * 3, 0, 1)); }
+  c.save(); c.beginPath(); c.rect(0, 0, DUCT.x0 + 26, H); c.clip(); crate(c, cx, cy); c.restore();
+  ductMouthIn(c);
+  actor(c, 'inv', [[0, 'lens'], [3.8, 'lens'], [4.4, 'pleased']], tau, 1770);
+  inset(c, tau, l.start + 2.8, {spread: 0, label: 'R² high'});
+  caption(c, 'Old economy: the statements capture the value', tau, l.start + .2);
+}
+function sceneStuck(c, tau) {
+  const l0 = LN('stuck', 0), l1 = LN('stuck', 1);
+  const t1 = .9, tC = 2.0, tS = 2.6;
+  stageBase(c, {building: 'lab'});
+  const tiles = [{k: 4, c: 'b', t: 3.6}, {k: 1, c: 'b', t: 4.3}, {k: 9, c: 'b', t: 5.0}];
+  board(c, tiles, tau, {pic: 'bulb', gaps: clamp((tau - l1.start - 1.8) / .4, 0, 1)});
+  const keys = [[0, 'hold'], [t1 - .3, 'hold'], [t1 + .2, 'step'], [tC, 'push1'], [tS, 'push2'], [3.2, 'push1'], [3.7, 'push2'], [4.3, 'push1'], [4.8, 'push2'], [5.6, 'push2'],
+    [6.3, 'recoil', easeOut], [7.0, 'recoil'], [7.8, 'look']];
+  const m = actor(c, 'man', keys, tau, 180);
+  const hand = m.local(m.P.armN[1]), tq = snap2(tau);
+  const contact = DUCT.x0 - 14;
+  let bx = hand[0] + 92, by = hand[1] + 10;
+  const k = clamp((bx + 105 - contact) / 60, 0, 1);            // how hard it is pressed into the mouth
+  if (tq > 5.6) {                                             // released: springs back off the mouth, falls to the floor
+    const rel = [MAN.push2.armN[1][0] + 180 + 92, MAN.push2.armN[1][1] + 900 + 10], u = clamp((tq - 5.6) / .5, 0, 1);
+    bx = lerp(rel[0], BLOB_FLOOR[0], u); by = lerp(rel[1], BLOB_FLOOR[1], u * u);
+    ideaBlob(c, bx, by, {k: Math.max(0, 1 - u * 2.5) * .6});
+  } else ideaBlob(c, bx, by, {k, flatX: contact});
+  ductMouthIn(c);
+  // effort lines while straining; drawn per drawing change (on twos), fixed seeds
+  if (m.P.eye < .5) { c.save(); c.strokeStyle = INK; c.lineWidth = 2.4; c.lineCap = 'round'; const hd = m.local(m.P.head); for (let q = 0; q < 3; q++) { const a = -2.4 + q * .45; c.beginPath(); c.moveTo(hd[0] + Math.cos(a) * 60, hd[1] + Math.sin(a) * 60); c.lineTo(hd[0] + Math.cos(a) * 80, hd[1] + Math.sin(a) * 80); c.stroke(); } c.restore(); }
+  actor(c, 'inv', [[0, 'lens'], [4.9, 'lens'], [5.6, 'puzzled']], tau, 1770);
+  if (snap2(tau) > 5.7) { write(c, '?', 1860, 470, {size: 110, color: RED, weight: 700, align: 'center', p: 1}); }
+  inset(c, tau, 3.4, {spread: 1, label: 'R² low', formula: writeP(tau, l1.start + 1.1, 'inadequacy = 1 − R²', 16)});
+  caption(c, 'Knowledge economy: value that GAAP’s boxes miss', tau, l0.start + .2);
+}
+function sceneQuestion(c, tau) {
+  const l = LN('question', 0);
+  stageBase(c, {building: 'lab'});
+  board(c, [{k: 4, c: 'b', t: -1}, {k: 1, c: 'b', t: -1}, {k: 9, c: 'b', t: -1}], tau, {pic: 'bulb', gaps: 1});
+  const b1 = at('question', 0, .38), b2 = at('question', 0, .62);
+  const m = actor(c, 'man', [[0, 'look'], [.5, 'look'], [1.2, 'think'], [b2 + .6, 'think'], [b2 + 1.3, 'look']], tau, 180);
+  ideaBlob(c, ...BLOB_FLOOR, {k: 0});           // the blob rests on the floor, set down during the cut
+  ductMouthIn(c);
+  actor(c, 'inv', [[0, 'puzzled']], tau, 1770);
+  const hd = m.local(MAN.think.head);
+  bubble(c, 330, 250, 330, 190, hd[0] + 20, hd[1] - 60, clamp((tau - b1 + .3) / .3, 0, 1), c => {
+    write(c, 'just comply?', 330, 225, {size: 48, align: 'center', weight: 700, color: BLUE});
+    c.strokeStyle = INK; c.lineWidth = 2.4; c.strokeRect(250, 250, 34, 34);
+    inkLine(c, [[256, 266], [266, 280], [286, 248]], {w: 4, seed: 131, p: clamp((tau - b1 - .4) / .3, 0, 1)});
+    write(c, 'the minimum', 300, 278, {size: 34, color: GREY});
+  });
+  bubble(c, 760, 310, 360, 190, hd[0] + 60, hd[1] - 40, clamp((tau - b2 + .3) / .3, 0, 1), c => {
+    write(c, 'or say more?', 760, 285, {size: 48, align: 'center', weight: 700, color: RED});
+    inkLine(c, [[700, 320], [740, 360], [760, 420]], {w: 3, color: RED, seed: 132, p: clamp((tau - b2 - .3) / .5, 0, 1)});
+    write(c, '→ MD&A', 780, 350, {size: 38, color: RED, weight: 700});
+  });
+}
+function sceneMdna(c, tau) {
+  const l0 = LN('mdna', 0), l1 = LN('mdna', 1);
+  stageBase(c, {building: 'lab'});
+  ideaBlob(c, 240, 812, {k: 0});
+  // cards travel the ribbon at constant speed from the lectern to the board
+  const cards = [
+    {text: 'Adjusted EBITDA', t: l0.start + 1.0, col: RED, k: 0},
+    {text: 'Organic growth', t: l0.start + 2.2, col: RED, k: 6},
+    {text: 'Free cash flow', t: l0.start + 3.4, col: RED, k: 11},
+    {text: 'We expect…', t: l1.start + .2, col: RED, k: 2, arrow: true},
+    {text: 'We plan to…', t: l1.start + 1.2, col: RED, k: 3, arrow: true},
+    {text: 'Next year…', t: l1.start + 2.2, col: RED, k: 5, arrow: true},
+    {text: 'Our pipeline…', t: l1.start + 3.1, col: RED, k: 7, arrow: true},
+    {text: 'Outlook: …', t: l1.start + 3.9, col: RED, k: 8, arrow: true},
+    {text: 'R&D will…', t: l1.start + 4.6, col: RED, k: 10, arrow: true},
+  ];
+  const travel = 2.6;
+  const tiles = [{k: 4, c: 'b', t: -1}, {k: 1, c: 'b', t: -1}, {k: 9, c: 'b', t: -1}, ...cards.map(cd => ({k: cd.k, c: 'r', t: cd.t + travel + .55, from: RIB.at(1).p}))];
+  board(c, tiles, tau, {pic: 'bulb', gaps: 1});
+  for (const cd of cards) {
+    const u = (tau - cd.t) / travel; if (u < 0 || u > 1) continue;
+    const a = RIB.at(u), s = u > .85 ? lerp(1, .5, (u - .85) / .15) : 1;
+    c.save(); c.translate(...a.p); c.scale(s, s); card(c, cd.text, 0, -4, Math.atan2(a.tangent[1], a.tangent[0]) * .6, cd.col, {arrow: cd.arrow, w: cd.arrow ? 200 : 210}); c.restore();
+  }
+  const wk = [[0, 'write1']]; for (let t = .5; t < l1.end + .2; t += .5) wk.push([t, wk.length % 2 ? 'write2' : 'write1']);
+  wk.push([l1.end + .9, 'pleased']);
+  const m = actor(c, 'man', wk, tau, 420);
+  pen(c, ...m.local(vadd(m.P.armN[1], [14, 14])), -2.1);
+  actor(c, 'inv', [[0, 'puzzled'], [l0.start + 3.4, 'puzzled'], [l0.start + 4.2, 'lens'], [l1.end - .5, 'lens'], [l1.end + .2, 'pleased']], tau, 1770);
+  write(c, 'non-GAAP measures: tailored to the firm', 90, 110, {size: 52, weight: 700, color: RED, p: writeP(tau, l0.start + 1.5, 'non-GAAP measures: tailored to the firm', 30)});
+  write(c, 'forward-looking statements: where it is heading', 90, 180, {size: 52, weight: 700, color: RED, p: writeP(tau, l1.start + .3, 'forward-looking statements: where it is heading', 30)});
+}
+function bars(c, x, y, title, vals, labels, tau, t0, {max, fmt, delta, deltaNote}) {
+  write(c, title, x, y, {size: 50, weight: 700, p: writeP(tau, t0, title, 30)});
+  const base = y + 420, bw = 130, gap = 90;
+  inkLine(c, [[x - 10, base], [x + 2 * bw + gap + 60, base]], {seed: 141, w: 2.4, p: clamp((tau - t0) / .5, 0, 1)});
+  vals.forEach((v, k) => {
+    const g = easeOutQuint(clamp((tau - t0 - .6 - k * .6) / 1.0, 0, 1)), hgt = 320 * v / max * g, bx = x + 20 + k * (bw + gap);
+    if (g <= 0) return;
+    const r = rectPath(bx, base - hgt, bw, hgt);
+    printFill(c, r, k ? RED_L : BLUE_L); c.save(); c.strokeStyle = k ? RED : BLUE; c.lineWidth = 3; c.stroke(r); c.restore();
+    write(c, fmt(v), bx + bw / 2, base - hgt - 16, {size: 40, align: 'center', weight: 700, p: g > .95 ? 1 : 0});
+    write(c, labels[k], bx + bw / 2, base + 46, {size: 32, align: 'center', color: GREY, p: g > .2 ? 1 : 0});
+  });
+  const q = clamp((tau - t0 - 2.0) / .5, 0, 1);
+  if (q > 0) { write(c, delta, x + 2 * bw + gap + 40, y + 120, {size: 72, weight: 700, color: RED, p: q});
+    if (deltaNote) write(c, deltaNote, x + 2 * bw + gap + 40, y + 170, {size: 32, color: GREY, p: q}); }
+}
+function sceneNumbers(c, tau) {
+  const l0 = LN('numbers', 0), l1 = LN('numbers', 1);
+  paper(c, PAPER, null, 5);
+  write(c, 'Most adequate → least adequate statements', CX, 120, {size: 56, weight: 700, align: 'center', p: writeP(tau, .1, 'Most adequate → least adequate statements', 40)});
+  bars(c, 170, 260, 'Non-GAAP talk in the MD&A', [100, 119], ['most', 'least'], tau, l0.start + .4, {max: 125, fmt: v => v === 100 ? 'index 100' : '119', delta: '+19%'});
+  bars(c, 1050, 260, 'Forward-looking sentences', [30, 31.5], ['most', 'least'], tau, l1.start - .2, {max: 33, fmt: v => v === 30 ? '≈ 30' : '≈ 31.5', delta: '+5%', deltaNote: '≈ 1.5 more sentences'});
+  write(c, 'Firm-years 2004–2016. Bars illustrate the reported differences; non-GAAP shown as an index.', CX, 1010, {size: 28, color: GREY, align: 'center', p: writeP(tau, l1.start + 1.5, 'x'.repeat(20), 20)});
+}
+function pageLines(c, x, y, w, n, seed, color = alpha(INK, .35)) {
+  c.save(); c.strokeStyle = color; c.lineWidth = 5; c.lineCap = 'round';
+  for (let k = 0; k < n; k++) { const L = w * (.72 + hash(k, seed) * .28) * (k % 6 === 5 ? .55 : 1); c.beginPath(); c.moveTo(x, y + k * 22); c.lineTo(x + L, y + k * 22); c.stroke(); }
+  c.restore();
+}
+function sceneMethods(c, tau) {
+  const l0 = LN('methods', 0), l1 = LN('methods', 1);
+  paper(c, PAPER, null, 5);
+  write(c, 'How it is measured', 90, 110, {size: 60, weight: 700, p: writeP(tau, .1, 'How it is measured', 30)});
+  // page 1: keywords
+  const px = 110, py = 200, pw = 470, ph = 700;
+  const page = (x, t0) => { const q = clamp((tau - t0) / .5, 0, 1); if (q <= 0) return false; c.save(); c.globalAlpha *= q; printFill(c, rectPath(x, py, pw, ph), CREAM, {off: [6, 6]}); c.strokeStyle = GREY; c.lineWidth = 2; c.strokeRect(x, py, pw, ph); write(c, 'MD&A', x + 30, py + 60, {size: 44, weight: 700, color: RED}); c.restore(); return true; };
+  const t0 = l0.start;
+  if (page(px, t0)) {
+    pageLines(c, px + 30, py + 100, pw - 60, 26, 3);
+    const hits = [[3, 60, 'non-GAAP'], [9, 150, 'adjusted'], [15, 40, 'excluding'], [21, 200, 'non-GAAP']];
+    hits.forEach(([row, xo, wd], k) => { const q = clamp((tau - t0 - .9 - k * .35) / .3, 0, 1); if (q <= 0) return; c.save(); c.fillStyle = alpha(OCHRE, .55); c.fillRect(px + 30 + xo - 6, py + 100 + row * 22 - 12, 150 * q, 24); c.restore(); write(c, wd, px + 30 + xo, py + 100 + row * 22 + 9, {size: 28, weight: 700, p: q > .9 ? 1 : 0}); });
+    write(c, '1 · keywords → non-GAAP', px, py + ph + 60, {size: 40, weight: 700, color: RED, p: writeP(tau, t0 + .8, '1 · keywords → non-GAAP')});
+  }
+  // network: sentences go through convolution layers
+  const nx = 700, t1 = at('methods', 0, .55);
+  if (tau > t1 - .3) {
+    const q = clamp((tau - t1 + .3) / .5, 0, 1); c.save(); c.globalAlpha *= q;
+    for (let k = 0; k < 4; k++) { const x = nx + 40 + k * 95, hh = 300 - k * 60, pl = [[x, 520 - hh / 2], [x + 50, 520 - hh / 2 + 20], [x + 50, 520 + hh / 2 - 20], [x, 520 + hh / 2]];
+      printFill(c, polyPath(pl), k === 3 ? RED_L : BLUE_L); inkLine(c, pl, {close: true, seed: 150 + k, w: 2.4, amp: .4}); }
+    write(c, 'deep-learning network (CNN)', nx + 200, 330, {size: 34, color: GREY, align: 'center'});
+    c.restore();
+    const sents = ['We expect margins to widen next year.', 'Revenue rose 8% in 2015.', 'We plan to open 12 stores.'];
+    sents.forEach((s, k) => { const u = clamp((tau - t1 - .2 - k * 1.1) / 1.0, 0, 1); if (u <= 0) return;
+      const yy = 690 + k * 62, done = u >= 1, fls = k !== 1;
+      write(c, s, nx - 10 + (1 - easeOut(u)) * -40, yy, {size: 32, color: INK, alpha: clamp(u * 3, 0, 1)});
+      if (done) write(c, fls ? '✓ FLS' : '✗ not FLS', nx + 470, yy, {size: 32, weight: 700, color: fls ? RED : GREY});
+    });
+    write(c, '2 · network → forward-looking sentences', nx - 10, py + ph + 60, {size: 40, weight: 700, color: RED, p: writeP(tau, t1 + .3, '2 · network → forward-looking sentences')});
+  }
+  // TopicTiling: the page is cut into topic segments
+  const t2 = l1.start, tx = 1330;
+  if (tau > t2 - .3) {
+    const q = clamp((tau - t2 + .3) / .5, 0, 1);
+    const cols = {required: BLUE_L, traditional: '#d8dcc0', intangibles: OCHRE_L, other: '#e2dbd0'};
+    const segs = [['required', 5], ['traditional', 6], ['intangibles', 5], ['required', 3], ['other', 3], ['intangibles', 4]];
+    c.save(); c.globalAlpha *= q; printFill(c, rectPath(tx, py, pw, ph), CREAM, {off: [6, 6]}); c.strokeStyle = GREY; c.lineWidth = 2; c.strokeRect(tx, py, pw, ph); c.restore();
+    let row = 0;
+    segs.forEach(([g, n], k) => {
+      const y0 = py + 30 + row * 24, hh = n * 24, cut = clamp((tau - t2 - .6 - k * .35) / .35, 0, 1);
+      if (cut > 0) { c.save(); c.globalAlpha *= cut; c.fillStyle = cols[g]; c.fillRect(tx + 14, y0 - 4, pw - 28, hh); c.restore();
+        inkLine(c, [[tx - 16, y0 - 6], [tx + pw + 16, y0 - 6]], {seed: 170 + k, w: 2, color: INK, p: cut, amp: 1.2});
+        write(c, g, tx + pw - 26, y0 + hh / 2 + 10, {size: 30, weight: 700, align: 'right', color: g === 'intangibles' ? '#9a6a12' : GREY, p: cut > .8 ? 1 : 0}); }
+      pageLines(c, tx + 30, y0 + 10, pw - 200, n, 20 + k, alpha(INK, .3 * q));
+      row += n;
+    });
+    const ring = clamp((tau - at('methods', 1, .72)) / .6, 0, 1);
+    if (ring > 0) {
+      // circle both intangibles segments
+      inkLine(c, ellPts(tx + pw - 110, py + 30 + 11 * 24 + 60, 120, 58, -.05, 28), {close: true, seed: 181, w: 4, color: RED, p: ring, amp: 2});
+      inkLine(c, ellPts(tx + pw - 110, py + 30 + 23 * 24 + 48, 120, 52, .04, 28), {close: true, seed: 182, w: 4, color: RED, p: ring, amp: 2});
+      write(c, 'more disclosure here', tx + 40, py + ph - 20, {size: 40, weight: 700, color: RED, p: writeP(tau, at('methods', 1, .78), 'more disclosure here')});
+    }
+    write(c, '3 · TopicTiling → topics', tx, py + ph + 60, {size: 40, weight: 700, color: RED, p: writeP(tau, t2 + .3, '3 · TopicTiling → topics')});
+    write(c, '133 topics → 21 categories → 4 groups', tx, py + ph + 108, {size: 32, color: GREY, p: writeP(tau, t2 + 1.4, '133 topics → 21 categories → 4 groups', 36)});
+  }
+}
+function sceneMosaic(c, tau) {
+  const l = LN('mosaic', 0);
+  const z = key(tau, [[0, 1], [1.2, 1], [4.2, 1.45]], easeInOutSine), fx = key(tau, [[0, CX], [1.2, CX], [4.2, 1320]], easeInOutSine), fy = key(tau, [[0, CY], [1.2, CY], [4.2, 600]], easeInOutSine);
+  paper(c, PAPER, null, 5);
+  cam(c, fx, fy, z);
+  building(c, 'lab'); ground(c); duct(c, 1, {label: 1, stamp: 1, audit: 1}); lectern(c); ribbon(c, 1, {label: 1});
+  const blues = [1, 4, 9], reds = [0, 2, 3, 5, 6, 7, 8, 10, 11];
+  board(c, [...blues.map(k => ({k, c: 'b', t: -1})), ...reds.map(k => ({k, c: 'r', t: -1}))], tau, {pic: 'bulb', label: 1});
+  // both channels keep carrying: blue pieces in the duct window, cards on the ribbon
+  for (let k = 0; k < 3; k++) { const u = ((tau * .22 + k / 3) % 1); const a = RIB.at(u); card(c, ['We expect…', 'Adjusted EBITDA', 'Next year…'][k], a.p[0], a.p[1] - 4, Math.atan2(a.tangent[1], a.tangent[0]) * .6, RED, {w: 200, arrow: k !== 1}); }
+  actor(c, 'man', [[0, 'pleased']], tau, 420);
+  actor(c, 'inv', [[0, 'pleased']], tau, 1770);
+  resetT(c);
+  write(c, 'a mosaic, not fragments', CX, 130, {size: 64, weight: 700, align: 'center', p: writeP(tau, at('mosaic', 0, .35), 'a mosaic, not fragments', 26)});
+}
+function sceneEnd(c, tau) {
+  paper(c, PAPER, null, 5);
+  const lines = [
+    ['When the financial statements say too little,', 70, INK, 700, .2],
+    ['managers say more in the MD&A.', 70, RED, 700, 1.2],
+    ['Brown, S. V., Hinson, L. A., & Tucker, J. W. (2024).', 38, GREY, 500, 2.6],
+    ['Financial statement adequacy and firms’ MD&A disclosures.', 38, GREY, 500, 3.2],
+    ['Contemporary Accounting Research.', 38, GREY, 500, 3.8],
+  ];
+  const ys = [330, 420, 640, 694, 748];
+  lines.forEach(([t, s, col, wt, t0], k) => write(c, t, CX, ys[k], {size: s, color: col, weight: wt, align: 'center', p: writeP(tau, t0, t, 34)}));
+  const q = clamp((tau - 2.0) / .8, 0, 1);
+  inkLine(c, [[CX - 300, 520], [CX + 300, 520]], {seed: 191, w: 2, color: GREY, p: q});
+  write(c, 'An illustrated summary. Figures are schematic.', CX, 960, {size: 28, color: GREY, align: 'center', p: writeP(tau, 4.4, 'An illustrated summary. Figures are schematic.', 40)});
+}
+const FN = {title: sceneTitle, channels: sceneChannels, fits: sceneFits, stuck: sceneStuck, question: sceneQuestion, mdna: sceneMdna, numbers: sceneNumbers, methods: sceneMethods, mosaic: sceneMosaic, end: sceneEnd};
+// ---------------------------------------------------------------- score: soft cues only, the narration carries the film
+function score(ac, t0, out) {
+  const master = ac.createGain(); master.gain.value = .5; master.connect(out);
+  let acc = 0; const start = {}; for (const s of TIMING) { start[s.id] = acc; acc += s.dur; }
+  const S0 = id => start[id];
+  // a slow pad under the whole film, changing chord per scene
+  const roots = {title: 0, channels: 3, fits: 4, stuck: 1, question: 1, mdna: 4, numbers: 0, methods: 3, mosaic: 4, end: 0};
+  for (const s of TIMING) { const r = roots[s.id]; for (const k of [0, 2, 4]) note(ac, master, pentHz(-1, r + k, 220), t0, S0(s.id) + .05, s.dur + .8, 'sine', .045); }
+  // cues tied to visible actions
+  const tick = (t, f = 880, g = .1) => note(ac, master, f, t0, t, .35, 'triangle', g);
+  tick(S0('channels') + at('channels', 0, .5), 196, .22); noiseBurst(ac, master, t0, S0('channels') + at('channels', 0, .5), .12, .08, 3);   // stamp
+  for (let k = 0; k < 12; k++) tick(S0('fits') + 3.0 + k * .12, pentHz(0, k % 5, 440), .05);
+  for (const t of [2.6, 3.7, 4.8]) { noiseBurst(ac, master, t0, S0('stuck') + t, .15, .12, 7); tick(S0('stuck') + t, 110, .2); }   // bonk
+  for (const t of [3.6, 4.3, 5.0]) tick(S0('stuck') + t, pentHz(0, 2, 440), .05);
+  for (let t = .5; t < SC.mdna.dur - 1; t += .5) noiseBurst(ac, master, t0, S0('mdna') + t, .08, .025, 20 + t * 10);        // pen
+  for (const k of [0, 1, 2, 3, 4, 5, 6, 7, 8]) tick(S0('mdna') + [1, 2.2, 3.4].concat([.2, 1.2, 2.2, 3.1, 3.9, 4.6].map(x => x + LN('mdna', 1).start - LN('mdna', 0).start))[k] + LN('mdna', 0).start + 3.15, pentHz(1, k % 5, 440), .045);
+  tick(S0('end') + 1.2, pentHz(1, 0, 440), .07); tick(S0('end') + 1.45, pentHz(1, 2, 440), .06);
+}
+defineFilm({palette: makePalette({paper: PAPER, ink: INK}, 'pencilMinimal'), format: {ar: '16:9', width: 1920}, fps: 24,   // music: music.py, mixed by mix.sh
+  timeline: TIMING.map(s => ({name: s.id, dur: s.dur, fn: FN[s.id]}))});
+</script>
