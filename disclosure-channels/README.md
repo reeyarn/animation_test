@@ -6,6 +6,12 @@ The paper is Brown, Hinson & Tucker (2024), *"Financial statement adequacy and f
 
 This repo shows exactly how it was made: the paper's abstract and introduction (the only input), the code Claude wrote, and the commands that turned it into an MP4.
 
+[![Watch the hardest shot: the manager jamming an "ideas, software, brands" blob into the square GAAP duct](docs/preview.gif)](two-channels-narrated.mp4)
+
+*GitHub won't play video inline in a README — click the clip above (or the link below) to open `two-channels-narrated.mp4` and play it with sound in GitHub's own viewer.*
+
+![Contact sheet: twelve evenly spaced stills across the film](docs/contact-sheet.jpg)
+
 | File | What it is |
 |---|---|
 | [`two-channels-narrated.mp4`](two-channels-narrated.mp4) | Final film: picture, music, voice-over, subtitle track (1920×1080, 24 fps, 112 s) |
@@ -70,6 +76,14 @@ sh mix.sh
 ```
 
 To change the narration, edit `narration.json`, re-run `voice.py` (scene lengths follow the spoken lines automatically), then repeat steps 2–4. `qa.sh` renders a cropped, numbered, tiled strip of consecutive frames for spot-checking a shot: `sh qa.sh START COUNT STEP X Y W H OUT.jpg`.
+
+`docs/contact-sheet.jpg` and `docs/preview.gif` (used above) regenerate from the picture-only render:
+```bash
+node render.mjs two-channels.html --grid 12                              # writes out/two-channels-grid.jpg
+ffmpeg -y -ss 31.0 -t 5.0 -i out/two-channels.mp4 -vf \
+  "fps=12,scale=560:-1:flags=lanczos,split[s0][s1];[s0]palettegen=max_colors=192[p];[s1][p]paletteuse=dither=sierra2_4a" \
+  -loop 0 docs/preview.gif
+```
 
 ## Caveats
 
